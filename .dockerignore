@@ -1,0 +1,14 @@
+**/.git
+**/.idea
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/TestResults
+**/*.user
+**/*.suo
+tests/
+tmp_parse_test.cs
+README.md
+scripts/
+.github/
