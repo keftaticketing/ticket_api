@@ -16,6 +16,11 @@ internal static class TestDataSeeder
     public static readonly Guid TicketerId = DatabaseSeeder.TicketerId;
     public static readonly Guid AddisAbabaCityId = DatabaseSeeder.AddisAbabaCityId;
 
+    public const string AdminInitialPassword = "Admin123!";
+    public const string TicketerInitialPassword = "Ticketer123!";
+    public const string AdminWorkingPassword = "Admin123!@#";
+    public const string TicketerWorkingPassword = "Ticketer123!@#";
+
     public static async Task SeedAsync(TicketSystemDbContext db, IServiceProvider services)
     {
         if (await db.Users.AnyAsync())
@@ -103,10 +108,11 @@ internal static class TestDataSeeder
             UserName = "admin",
             FullName = "System Admin",
             IsActive = true,
+            MustChangePassword = false,
             Email = "admin@ticketsystem.local",
             EmailConfirmed = true
         };
-        await userManager.CreateAsync(admin, "admin123");
+        await userManager.CreateAsync(admin, AdminWorkingPassword);
         await userManager.AddToRoleAsync(admin, RoleNames.Admin);
 
         var ticketer = new ApplicationUser
@@ -115,10 +121,11 @@ internal static class TestDataSeeder
             UserName = "ticketer",
             FullName = "Counter Ticketer",
             IsActive = true,
+            MustChangePassword = false,
             Email = "ticketer@ticketsystem.local",
             EmailConfirmed = true
         };
-        await userManager.CreateAsync(ticketer, "ticketer123");
+        await userManager.CreateAsync(ticketer, TicketerWorkingPassword);
         await userManager.AddToRoleAsync(ticketer, RoleNames.Ticketer);
     }
 }

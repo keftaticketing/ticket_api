@@ -6,7 +6,22 @@ public sealed record AuthenticatedUser(
     Guid Id,
     string Username,
     string FullName,
-    IReadOnlyList<string> Roles);
+    IReadOnlyList<string> Roles,
+    bool MustChangePassword);
+
+public sealed record AuthTokens(
+    string AccessToken,
+    int AccessExpiresIn,
+    string RefreshToken,
+    int RefreshExpiresIn,
+    string Role,
+    string FullName,
+    bool MustChangePassword);
+
+public sealed record RefreshRotationResult(
+    AuthenticatedUser User,
+    string RefreshToken,
+    int RefreshExpiresIn);
 
 public interface IIdentityAuthService
 {

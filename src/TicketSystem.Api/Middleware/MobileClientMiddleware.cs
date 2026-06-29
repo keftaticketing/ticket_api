@@ -1,24 +1,25 @@
 namespace TicketSystem.Api.Middleware;
 
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Options;
 using TicketSystem.Api.Options;
+using TicketSystem.Api.Security;
 
 /// <summary>
-/// Identifies native mobile clients via X-Client-Id / X-Client-Key.
-/// Browser clients are validated by CORS using the Origin header instead.
+/// Identifies non-browser clients (Flutter, Angular via dev proxy) via X-Client-Id / X-Client-Key.
+/// Browser clients with an allowed CORS Origin skip this check.
 /// </summary>
 public sealed class MobileClientMiddleware(
     RequestDelegate next,
-    IOptions<MobileClientOptions> options,
+    IOptions<MobileClientOptions> mobileOptions,
+    IOptions<AngularClientOptions> angularOptions,
     ILogger<MobileClientMiddleware> logger)
 {
     public async Task InvokeAsync(HttpContext context)
     {
-        var settings = options.Value;
+        var mobile = mobileOptions.Value;
+        var angular = angularOptions.Value;
 
-        if (!settings.Enforce
+        if (!mobile.Enforce
             || HttpMethods.IsOptions(context.Request.Method)
             || HasBrowserOrigin(context.Request)
             || IsDocumentationPath(context.Request.Path))
@@ -27,17 +28,17 @@ public sealed class MobileClientMiddleware(
             return;
         }
 
-        if (!TryValidateClient(context.Request, settings))
+        if (!ClientCredentialValidator.TryValidate(context.Request, mobile, angular))
         {
             logger.LogWarning(
-                "Rejected request without valid mobile client headers from {RemoteIp}",
+                "Rejected request without valid client credentials from {RemoteIp}",
                 context.Connection.RemoteIpAddress);
 
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new
             {
-                title = "Forbidden",
-                detail = "Missing or invalid mobile client credentials."
+                code = "Client.InvalidCredentials",
+                description = "Missing or invalid client credentials."
             });
             return;
         }
@@ -53,37 +54,5 @@ public sealed class MobileClientMiddleware(
         var value = path.Value ?? string.Empty;
         return value.StartsWith("/openapi", StringComparison.OrdinalIgnoreCase)
                || value.StartsWith("/scalar", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryValidateClient(HttpRequest request, MobileClientOptions settings)
-    {
-        if (string.IsNullOrWhiteSpace(settings.SharedKey))
-        {
-            return false;
-        }
-
-        if (!request.Headers.TryGetValue(MobileClientOptions.ClientIdHeader, out var clientIdValues)
-            || !request.Headers.TryGetValue(MobileClientOptions.ClientKeyHeader, out var clientKeyValues))
-        {
-            return false;
-        }
-
-        var clientId = clientIdValues.ToString();
-        var clientKey = clientKeyValues.ToString();
-
-        if (!string.Equals(clientId, settings.ClientId, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return FixedTimeEquals(clientKey, settings.SharedKey);
-    }
-
-    private static bool FixedTimeEquals(string left, string right)
-    {
-        var leftBytes = Encoding.UTF8.GetBytes(left);
-        var rightBytes = Encoding.UTF8.GetBytes(right);
-        return leftBytes.Length == rightBytes.Length
-               && CryptographicOperations.FixedTimeEquals(leftBytes, rightBytes);
     }
 }

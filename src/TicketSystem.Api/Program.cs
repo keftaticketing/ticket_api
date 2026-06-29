@@ -45,6 +45,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 builder.Services.Configure<SseOptions>(builder.Configuration.GetSection(SseOptions.SectionName));
 builder.Services.Configure<MobileClientOptions>(builder.Configuration.GetSection(MobileClientOptions.SectionName));
+builder.Services.Configure<AngularClientOptions>(builder.Configuration.GetSection(AngularClientOptions.SectionName));
 builder.Services.AddTicketSystemCors(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -65,6 +66,7 @@ if (app.Environment.IsDevelopment())
 app.UseCors(CorsPolicySetup.DefaultPolicyName);
 app.UseMiddleware<MobileClientMiddleware>();
 app.UseAuthentication();
+app.UseMiddleware<MustChangePasswordMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 

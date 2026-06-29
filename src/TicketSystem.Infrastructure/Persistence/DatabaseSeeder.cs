@@ -115,11 +115,12 @@ public static class DatabaseSeeder
                 UserName = "admin",
                 FullName = "System Admin",
                 IsActive = true,
+                MustChangePassword = true,
                 Email = "admin@ticketsystem.local",
                 EmailConfirmed = true
             };
 
-            await userManager.CreateAsync(admin, "admin123");
+            await userManager.CreateAsync(admin, "Admin123!");
             await userManager.AddToRoleAsync(admin, RoleNames.Admin);
             logger.LogInformation("Seeded admin user.");
         }
@@ -132,11 +133,12 @@ public static class DatabaseSeeder
                 UserName = "ticketer",
                 FullName = "Counter Ticketer",
                 IsActive = true,
+                MustChangePassword = true,
                 Email = "ticketer@ticketsystem.local",
                 EmailConfirmed = true
             };
 
-            await userManager.CreateAsync(ticketer, "ticketer123");
+            await userManager.CreateAsync(ticketer, "Ticketer123!");
             await userManager.AddToRoleAsync(ticketer, RoleNames.Ticketer);
             logger.LogInformation("Seeded ticketer user.");
         }

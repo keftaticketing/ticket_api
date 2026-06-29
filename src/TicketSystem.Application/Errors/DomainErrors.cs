@@ -7,6 +7,30 @@ public static class DomainErrors
     public static Error InvalidCredentials =>
         Error.Unauthorized("Auth.InvalidCredentials", "Invalid username or password.");
 
+    public static Error InvalidRefreshToken =>
+        Error.Unauthorized("Auth.InvalidRefreshToken", "Refresh token is invalid or expired.");
+
+    public static Error PasswordChangeRequired =>
+        Error.Forbidden("Auth.PasswordChangeRequired", "You must change your password before continuing.");
+
+    public static Error CurrentPasswordIncorrect =>
+        Error.Validation("Auth.CurrentPasswordIncorrect", "Current password is incorrect.");
+
+    public static Error PasswordChangeFailed(string description) =>
+        Error.Validation("Auth.PasswordChangeFailed", description);
+
+    public static Error UserNotFound =>
+        Error.NotFound("User.NotFound", "User not found.");
+
+    public static Error DuplicateUsername =>
+        Error.Conflict("User.DuplicateUsername", "A user with this username already exists.");
+
+    public static Error UsernameRequired =>
+        Error.Validation("User.UsernameRequired", "Username is required.");
+
+    public static Error FullNameRequired =>
+        Error.Validation("User.FullNameRequired", "Full name is required.");
+
     public static Error BusNotFound =>
         Error.NotFound("Bus.NotFound", "Bus not found.");
 

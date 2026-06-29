@@ -9,24 +9,34 @@ using TicketSystem.Application.Abstractions.Authentication;
 
 public sealed class JwtTokenService(IConfiguration configuration) : ITokenService
 {
-    public (string Token, int ExpiresIn) CreateToken(
+    public (string Token, int ExpiresIn) CreateAccessToken(
         Guid userId,
         string username,
         string fullName,
-        IReadOnlyList<string> roles)
+        IReadOnlyList<string> roles,
+        bool mustChangePassword)
     {
         var jwtSection = configuration.GetSection("Jwt");
         var secret = jwtSection["Secret"] ?? throw new InvalidOperationException("Jwt:Secret is not configured.");
         var issuer = jwtSection["Issuer"] ?? "TicketSystem";
         var audience = jwtSection["Audience"] ?? "TicketSystem";
-        var expiresInMinutes = int.Parse(jwtSection["ExpiresInMinutes"] ?? "480");
+        var expiresInMinutes = int.Parse(
+            jwtSection["AccessTokenExpiresInMinutes"]
+            ?? jwtSection["ExpiresInMinutes"]
+            ?? "15");
 
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new(JwtRegisteredClaimNames.UniqueName, username),
-            new(ClaimTypes.Name, fullName)
+            new(ClaimTypes.Name, fullName),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
+
+        if (mustChangePassword)
+        {
+            claims.Add(new Claim(JwtClaimNames.PasswordChangeRequired, bool.TrueString));
+        }
 
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
 

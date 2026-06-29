@@ -22,6 +22,7 @@ public sealed class TicketSystemDbContext(DbContextOptions<TicketSystemDbContext
     public DbSet<TicketSaleDistribution> TicketSaleDistributions => Set<TicketSaleDistribution>();
     public DbSet<CashInventory> CashInventories => Set<CashInventory>();
     public DbSet<CashLedgerEntry> CashLedgerEntries => Set<CashLedgerEntry>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
