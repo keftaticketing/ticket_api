@@ -10,5 +10,6 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
     {
         builder.Property(x => x.FullName).HasMaxLength(200);
         builder.Property(x => x.IsActive).HasDefaultValue(true);
+        builder.Property(x => x.MustChangePassword).HasDefaultValue(false);
     }
 }

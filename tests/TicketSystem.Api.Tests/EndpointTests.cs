@@ -9,6 +9,7 @@ using TicketSystem.Contracts.Schedules;
 using TicketSystem.Contracts.Settings;
 using TicketSystem.Contracts.Tariffs;
 using TicketSystem.Contracts.Tickets;
+using TicketSystem.Contracts.Users;
 
 namespace TicketSystem.Api.Tests;
 
@@ -19,18 +20,20 @@ public sealed class AuthEndpointsTests(TicketSystemWebApplicationFactory factory
     public async Task Login_WithAdminCredentials_ReturnsToken()
     {
         var client = Factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("admin", "admin123"));
+        var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("admin", TestDataSeeder.AdminWorkingPassword));
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<LoginResponse>();
         body!.Role.Should().Be("Admin");
         body.AccessToken.Should().NotBeNullOrWhiteSpace();
+        body.RefreshToken.Should().NotBeNullOrWhiteSpace();
+        body.MustChangePassword.Should().BeFalse();
     }
 
     [Fact]
     public async Task Login_WithTicketerCredentials_ReturnsToken()
     {
         var client = Factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("ticketer", "ticketer123"));
+        var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("ticketer", TestDataSeeder.TicketerWorkingPassword));
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<LoginResponse>();
         body!.Role.Should().Be("Ticketer");
@@ -42,6 +45,52 @@ public sealed class AuthEndpointsTests(TicketSystemWebApplicationFactory factory
         var client = Factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("admin", "wrong"));
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Refresh_WithValidToken_ReturnsNewTokens()
+    {
+        var client = Factory.CreateClient();
+        var login = await client.PostAsJsonAsync(
+            "/api/auth/login",
+            new LoginRequest("admin", TestDataSeeder.AdminWorkingPassword));
+        login.EnsureSuccessStatusCode();
+        var body = await login.Content.ReadFromJsonAsync<LoginResponse>();
+
+        var refresh = await client.PostAsJsonAsync(
+            "/api/auth/refresh",
+            new RefreshTokenRequest(body!.RefreshToken));
+        refresh.StatusCode.Should().Be(HttpStatusCode.OK);
+        var refreshed = await refresh.Content.ReadFromJsonAsync<AuthTokenResponse>();
+        refreshed!.AccessToken.Should().NotBe(body.AccessToken);
+        refreshed.RefreshToken.Should().NotBe(body.RefreshToken);
+    }
+}
+
+[Collection("Api")]
+public sealed class UserEndpointsTests(TicketSystemWebApplicationFactory factory) : EndpointTestBase(factory)
+{
+    [Fact]
+    public async Task CreateTicketer_AsAdmin_ReturnsCreatedUser()
+    {
+        var client = AdminClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/users",
+            new CreateTicketerRequest("counter2", "Counter Two", "TempPass123!", "counter2@local.test"));
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<UserSummaryResponse>();
+        body!.Username.Should().Be("counter2");
+        body.MustChangePassword.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ListUsers_AsAdmin_ReturnsUsers()
+    {
+        var client = AdminClient();
+        var response = await client.GetAsync("/api/users");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<List<UserSummaryResponse>>();
+        body.Should().NotBeEmpty();
     }
 }
 
@@ -667,9 +716,11 @@ public abstract class EndpointTestBase : IAsyncLifetime
 
     protected TicketSystemWebApplicationFactory Factory { get; }
 
-    protected HttpClient AdminClient() => Factory.CreateClientWithCredentials("admin", "admin123");
+    protected HttpClient AdminClient() =>
+        Factory.CreateClientWithCredentials("admin", TestDataSeeder.AdminWorkingPassword);
 
-    protected HttpClient TicketerClient() => Factory.CreateClientWithCredentials("ticketer", "ticketer123");
+    protected HttpClient TicketerClient() =>
+        Factory.CreateClientWithCredentials("ticketer", TestDataSeeder.TicketerWorkingPassword);
 
     protected async Task<Guid> EnsureCityAsync(string name)
     {

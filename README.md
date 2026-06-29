@@ -949,7 +949,7 @@ POST /api/auth/login   { username, password }
 ```json
 {
   "username": "admin",
-  "password": "admin123"
+  "password": "Admin123!"
 }
 ```
 
@@ -958,15 +958,97 @@ POST /api/auth/login   { username, password }
 ```json
 {
   "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expiresIn": 28800,
+  "expiresIn": 900,
+  "refreshToken": "...",
+  "refreshExpiresIn": 604800,
   "role": "Admin",
-  "fullName": "System Admin"
+  "fullName": "System Admin",
+  "mustChangePassword": true
 }
 ```
 
-Default seeded users (development): `admin` / `admin123`, `ticketer` / `ticketer123`.
+When `mustChangePassword` is `true`, only these auth endpoints work until the password is changed: `POST /api/auth/change-password`, `POST /api/auth/refresh`, `POST /api/auth/logout`.
 
-Flutter stores token securely (`flutter_secure_storage`).
+**Change password** — `POST /api/auth/change-password` (Bearer token required)
+
+```json
+{
+  "currentPassword": "Admin123!",
+  "newPassword": "MyNewSecure123!"
+}
+```
+
+Returns new access + refresh tokens with `mustChangePassword: false`.
+
+**Refresh** — `POST /api/auth/refresh` (anonymous)
+
+```json
+{ "refreshToken": "..." }
+```
+
+**Logout** — `POST /api/auth/logout` (Bearer token required)
+
+```json
+{ "refreshToken": "..." }
+```
+
+**Admin: create ticketer** — `POST /api/users` (Admin role)
+
+```json
+{
+  "username": "counter1",
+  "fullName": "Counter One",
+  "password": "TempPass123!",
+  "email": "counter1@local.test"
+}
+```
+
+New ticketers are created with `mustChangePassword: true`.
+
+Default seeded users (development, first login must change password):
+
+| User | Initial password |
+|------|------------------|
+| `admin` | `Admin123!` |
+| `ticketer` | `Ticketer123!` |
+
+Password policy: min 8 chars, upper, lower, digit, symbol. Access tokens expire in 15 minutes; refresh tokens in 7 days (rotated on each refresh).
+
+Apply DB migration after pull: `dotnet ef database update --project src/TicketSystem.Infrastructure --startup-project src/TicketSystem.Api`
+
+Flutter stores access + refresh tokens securely (`flutter_secure_storage`) and refreshes automatically on 401.
+
+### Client credentials (mobile & Angular)
+
+When `MobileClient:Enforce` is `true`, requests **without** a browser `Origin` header (Flutter, Angular dev-server proxy) must send:
+
+| Header | Mobile | Angular admin |
+|--------|--------|---------------|
+| `X-Client-Id` | `ticket-counter` | `ticket-admin` |
+| `X-Client-Key` | see `MobileClient:SharedKey` | see `AngularClient:SharedKey` |
+
+Development defaults (`appsettings.Development.json`):
+
+- Mobile key: `dev-mobile-client-key`
+- Angular key: `dev-angular-client-key`
+
+Browser requests with an allowed CORS `Origin` (e.g. direct `http://localhost:4200` → API) skip this check. Angular using a **dev proxy** must attach the Angular headers on every HTTP call, for example:
+
+```typescript
+// environment.ts
+export const environment = {
+  apiClientId: 'ticket-admin',
+  apiClientKey: 'dev-angular-client-key',
+};
+
+// auth.interceptor.ts (or app.config.ts provideHttpClient with interceptors)
+req = req.clone({
+  setHeaders: {
+    'X-Client-Id': environment.apiClientId,
+    'X-Client-Key': environment.apiClientKey,
+  },
+});
+```
 
 ---
 

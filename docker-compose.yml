@@ -34,6 +34,8 @@ services:
       MobileClient__ClientId: ticket-counter
       MobileClient__SharedKey: ${MOBILE_CLIENT_SHARED_KEY:-dev-mobile-client-key}
       MobileClient__Enforce: "false"
+      AngularClient__ClientId: ticket-admin
+      AngularClient__SharedKey: ${ANGULAR_CLIENT_SHARED_KEY:-dev-angular-client-key}
     depends_on:
       postgres:
         condition: service_healthy

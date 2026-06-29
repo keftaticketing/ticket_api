@@ -21,7 +21,7 @@ public sealed class SseEndpointsTests(TicketSystemWebApplicationFactory factory)
     public async Task StreamSchedule_EmitsConnectedThenSeatSold()
     {
         var scheduleId = await SeedScheduleAsync("AA-40001", 20);
-        var listener = Factory.CreateClientWithCredentials("ticketer", "ticketer123");
+        var listener = Factory.CreateClientWithCredentials("ticketer", TestDataSeeder.TicketerWorkingPassword);
         var seller = TicketerClient();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -79,7 +79,7 @@ public sealed class SseEndpointsTests(TicketSystemWebApplicationFactory factory)
     public async Task StreamSchedule_SurvivesHeartbeatAndSeatSold()
     {
         var scheduleId = await SeedScheduleAsync("AA-40002", 20);
-        var listener = Factory.CreateClientWithCredentials("ticketer", "ticketer123");
+        var listener = Factory.CreateClientWithCredentials("ticketer", TestDataSeeder.TicketerWorkingPassword);
         var seller = TicketerClient();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));

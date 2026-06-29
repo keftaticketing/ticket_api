@@ -20,7 +20,7 @@ public sealed class IdentityAuthService(
             return DomainErrors.InvalidCredentials;
         }
 
-        var signInResult = await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: false);
+        var signInResult = await signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true);
         if (!signInResult.Succeeded)
         {
             return DomainErrors.InvalidCredentials;
@@ -36,6 +36,7 @@ public sealed class IdentityAuthService(
             user.Id,
             user.UserName ?? username,
             user.FullName,
-            roles.ToList());
+            roles.ToList(),
+            user.MustChangePassword);
     }
 }
