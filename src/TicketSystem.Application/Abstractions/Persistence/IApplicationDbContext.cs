@@ -8,6 +8,8 @@ public interface IApplicationDbContext
 {
     DbSet<Bus> Buses { get; }
     DbSet<City> Cities { get; }
+    DbSet<Station> Stations { get; }
+    DbSet<UserStationAssignment> UserStationAssignments { get; }
     DbSet<Route> Routes { get; }
     DbSet<Tariff> Tariffs { get; }
     DbSet<Schedule> Schedules { get; }

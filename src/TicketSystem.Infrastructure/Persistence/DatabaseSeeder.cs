@@ -31,9 +31,9 @@ public static class DatabaseSeeder
         await SeedAssociationsAsync(db, logger);
         await SeedBusLevelsAsync(db, logger);
         await SeedBusTypesAsync(db, logger);
-        await SalesPartySeeder.SeedAsync(db);
-
         var clock = scope.ServiceProvider.GetRequiredService<IBusinessClock>();
+        await SeedUserStationAssignmentsAsync(db, logger, clock);
+        await SalesPartySeeder.SeedAsync(db);
 
         if (!await db.Tariffs.AnyAsync())
         {
@@ -200,6 +200,44 @@ public static class DatabaseSeeder
             existing.Name = name;
             existing.IsActive = true;
         }
+    }
+
+    private static async Task SeedUserStationAssignmentsAsync(
+        TicketSystemDbContext db,
+        ILogger logger,
+        IBusinessClock clock)
+    {
+        var addisStationCode = BuildDefaultStationCode(CityNames.AddisAbaba);
+        var addisStation = await db.Stations
+            .SingleOrDefaultAsync(x => x.Code == addisStationCode);
+        if (addisStation is null)
+        {
+            return;
+        }
+
+        var existing = await db.UserStationAssignments
+            .SingleOrDefaultAsync(x =>
+                x.UserId == TicketerId
+                && x.StationId == addisStation.Id
+                && x.EndedAtUtc == null);
+        if (existing is not null)
+        {
+            return;
+        }
+
+        db.UserStationAssignments.Add(new UserStationAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = TicketerId,
+            StationId = addisStation.Id,
+            AssignedAtUtc = clock.UtcNow,
+            CreatedAt = clock.UtcNow
+        });
+
+        logger.LogInformation(
+            "Seeded active station assignment for ticketer {TicketerId} at station {StationCode}.",
+            TicketerId,
+            addisStationCode);
     }
 
     private static string BuildDefaultStationCode(string cityName)

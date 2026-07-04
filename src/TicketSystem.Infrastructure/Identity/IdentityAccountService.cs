@@ -13,6 +13,26 @@ public sealed class IdentityAccountService(
     UserManager<ApplicationUser> userManager,
     TicketSystemDbContext dbContext) : IIdentityAccountService
 {
+    public async Task<ErrorOr<AuthenticatedUser>> GetAuthenticatedUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await userManager.Users
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null || !user.IsActive)
+        {
+            return DomainErrors.UserNotFound;
+        }
+
+        var roles = await userManager.GetRolesAsync(user);
+        if (roles.Count == 0)
+        {
+            return DomainErrors.UserNotFound;
+        }
+
+        return MapAuthenticatedUser(user, roles);
+    }
+
     public async Task<ErrorOr<AuthenticatedUser>> ChangePasswordAsync(
         Guid userId,
         string currentPassword,
@@ -41,12 +61,7 @@ public sealed class IdentityAccountService(
         await userManager.UpdateAsync(user);
 
         var roles = await userManager.GetRolesAsync(user);
-        return new AuthenticatedUser(
-            user.Id,
-            user.UserName ?? string.Empty,
-            user.FullName,
-            roles.ToList(),
-            user.MustChangePassword);
+        return MapAuthenticatedUser(user, roles);
     }
 
     public async Task<ErrorOr<UserSummaryResponse>> CreateTicketerAsync(
@@ -162,6 +177,14 @@ public sealed class IdentityAccountService(
             user.FullName,
             role,
             user.IsActive,
+            user.MustChangePassword);
+
+    private static AuthenticatedUser MapAuthenticatedUser(ApplicationUser user, IList<string> roles) =>
+        new(
+            user.Id,
+            user.UserName ?? string.Empty,
+            user.FullName,
+            roles.ToList(),
             user.MustChangePassword);
 
     private static string PrimaryRole(IList<string> roles) =>
