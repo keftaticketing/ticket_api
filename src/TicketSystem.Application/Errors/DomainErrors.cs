@@ -25,6 +25,15 @@ public static class DomainErrors
     public static Error DuplicateUsername =>
         Error.Conflict("User.DuplicateUsername", "A user with this username already exists.");
 
+    public static Error StationNotFound =>
+        Error.NotFound("Station.NotFound", "Station not found.");
+
+    public static Error StationAssignmentNotFound =>
+        Error.NotFound("StationAssignment.NotFound", "Station assignment not found.");
+
+    public static Error StationAssignmentAlreadyActive =>
+        Error.Conflict("StationAssignment.AlreadyActive", "This user already has an active assignment for the selected station.");
+
     public static Error UsernameRequired =>
         Error.Validation("User.UsernameRequired", "Username is required.");
 

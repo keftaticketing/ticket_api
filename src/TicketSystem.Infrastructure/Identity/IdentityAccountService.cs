@@ -130,6 +130,107 @@ public sealed class IdentityAccountService(
         return summaries;
     }
 
+    public async Task<ErrorOr<IReadOnlyList<UserStationAssignmentSummaryResponse>>> ListStationAssignmentsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await userManager.Users.AnyAsync(x => x.Id == userId, cancellationToken))
+        {
+            return DomainErrors.UserNotFound;
+        }
+
+        var assignments = await dbContext.UserStationAssignments
+            .AsNoTracking()
+            .Include(x => x.Station)
+            .ThenInclude(x => x.City)
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.AssignedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        return assignments.Select(MapStationAssignment).ToList();
+    }
+
+    public async Task<ErrorOr<UserStationAssignmentSummaryResponse>> AssignStationAsync(
+        Guid userId,
+        Guid stationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await userManager.Users.AnyAsync(x => x.Id == userId, cancellationToken))
+        {
+            return DomainErrors.UserNotFound;
+        }
+
+        var station = await dbContext.Stations
+            .AsNoTracking()
+            .Include(x => x.City)
+            .SingleOrDefaultAsync(x => x.Id == stationId && x.IsActive, cancellationToken);
+        if (station is null)
+        {
+            return DomainErrors.StationNotFound;
+        }
+
+        var existingActive = await dbContext.UserStationAssignments
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.UserId == userId
+                    && x.StationId == stationId
+                    && x.EndedAtUtc == null,
+                cancellationToken);
+        if (existingActive)
+        {
+            return DomainErrors.StationAssignmentAlreadyActive;
+        }
+
+        var assignment = new Domain.Entities.UserStationAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            StationId = stationId,
+            AssignedAtUtc = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        dbContext.UserStationAssignments.Add(assignment);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return new UserStationAssignmentSummaryResponse(
+            assignment.Id,
+            userId,
+            station.Id,
+            station.Name,
+            station.NameAm,
+            station.Code,
+            station.CityId,
+            station.City.Name,
+            station.IsImplicitDefault,
+            assignment.AssignedAtUtc,
+            assignment.EndedAtUtc,
+            true);
+    }
+
+    public async Task<ErrorOr<UserStationAssignmentSummaryResponse>> EndStationAssignmentAsync(
+        Guid userId,
+        Guid assignmentId,
+        CancellationToken cancellationToken = default)
+    {
+        var assignment = await dbContext.UserStationAssignments
+            .Include(x => x.Station)
+            .ThenInclude(x => x.City)
+            .SingleOrDefaultAsync(x => x.Id == assignmentId && x.UserId == userId, cancellationToken);
+        if (assignment is null)
+        {
+            return DomainErrors.StationAssignmentNotFound;
+        }
+
+        if (assignment.EndedAtUtc is null)
+        {
+            assignment.EndedAtUtc = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return MapStationAssignment(assignment);
+    }
+
     public async Task<ErrorOr<UserSummaryResponse>> SetUserActiveAsync(
         Guid userId,
         bool isActive,
@@ -186,6 +287,21 @@ public sealed class IdentityAccountService(
             user.FullName,
             roles.ToList(),
             user.MustChangePassword);
+
+    private static UserStationAssignmentSummaryResponse MapStationAssignment(Domain.Entities.UserStationAssignment assignment) =>
+        new(
+            assignment.Id,
+            assignment.UserId,
+            assignment.StationId,
+            assignment.Station.Name,
+            assignment.Station.NameAm,
+            assignment.Station.Code,
+            assignment.Station.CityId,
+            assignment.Station.City.Name,
+            assignment.Station.IsImplicitDefault,
+            assignment.AssignedAtUtc,
+            assignment.EndedAtUtc,
+            assignment.EndedAtUtc is null);
 
     private static string PrimaryRole(IList<string> roles) =>
         roles.Contains(RoleNames.Admin) ? RoleNames.Admin : roles[0];

@@ -28,6 +28,35 @@ public sealed class UsersController(IIdentityAccountService accountService) : Co
         return result.ToActionResult();
     }
 
+    [HttpGet("{id:guid}/station-assignments")]
+    public async Task<ActionResult<IReadOnlyList<UserStationAssignmentSummaryResponse>>> ListStationAssignments(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await accountService.ListStationAssignmentsAsync(id, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPost("{id:guid}/station-assignments")]
+    public async Task<ActionResult<UserStationAssignmentSummaryResponse>> AssignStation(
+        Guid id,
+        [FromBody] CreateUserStationAssignmentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await accountService.AssignStationAsync(id, request.StationId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPost("{id:guid}/station-assignments/{assignmentId:guid}/end")]
+    public async Task<ActionResult<UserStationAssignmentSummaryResponse>> EndStationAssignment(
+        Guid id,
+        Guid assignmentId,
+        CancellationToken cancellationToken)
+    {
+        var result = await accountService.EndStationAssignmentAsync(id, assignmentId, cancellationToken);
+        return result.ToActionResult();
+    }
+
     [HttpPatch("{id:guid}/active")]
     public async Task<ActionResult<UserSummaryResponse>> SetActive(
         Guid id,

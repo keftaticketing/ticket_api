@@ -22,6 +22,20 @@ public interface IIdentityAccountService
     Task<ErrorOr<IReadOnlyList<UserSummaryResponse>>> ListUsersAsync(
         CancellationToken cancellationToken = default);
 
+    Task<ErrorOr<IReadOnlyList<UserStationAssignmentSummaryResponse>>> ListStationAssignmentsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<ErrorOr<UserStationAssignmentSummaryResponse>> AssignStationAsync(
+        Guid userId,
+        Guid stationId,
+        CancellationToken cancellationToken = default);
+
+    Task<ErrorOr<UserStationAssignmentSummaryResponse>> EndStationAssignmentAsync(
+        Guid userId,
+        Guid assignmentId,
+        CancellationToken cancellationToken = default);
+
     Task<ErrorOr<UserSummaryResponse>> SetUserActiveAsync(
         Guid userId,
         bool isActive,
