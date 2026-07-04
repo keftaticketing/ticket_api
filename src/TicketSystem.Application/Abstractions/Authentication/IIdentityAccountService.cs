@@ -5,6 +5,10 @@ using TicketSystem.Contracts.Users;
 
 public interface IIdentityAccountService
 {
+    Task<ErrorOr<AuthenticatedUser>> GetAuthenticatedUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
     Task<ErrorOr<AuthenticatedUser>> ChangePasswordAsync(
         Guid userId,
         string currentPassword,

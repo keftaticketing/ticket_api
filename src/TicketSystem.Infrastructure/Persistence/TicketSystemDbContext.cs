@@ -16,6 +16,7 @@ public sealed class TicketSystemDbContext(DbContextOptions<TicketSystemDbContext
     public DbSet<Bus> Buses => Set<Bus>();
     public DbSet<City> Cities => Set<City>();
     public DbSet<Station> Stations => Set<Station>();
+    public DbSet<UserStationAssignment> UserStationAssignments => Set<UserStationAssignment>();
     public DbSet<Route> Routes => Set<Route>();
     public DbSet<Tariff> Tariffs => Set<Tariff>();
     public DbSet<Schedule> Schedules => Set<Schedule>();

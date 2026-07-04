@@ -34,6 +34,19 @@ public sealed class AuthController(
     }
 
     [Authorize]
+    [HttpGet("me")]
+    public async Task<ActionResult<CurrentUserResponse>> Me(CancellationToken cancellationToken)
+    {
+        if (currentUser.UserId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await authService.GetMeAsync(currentUser.UserId.Value, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [Authorize]
     [HttpPost("change-password")]
     public async Task<ActionResult<AuthTokenResponse>> ChangePassword(
         [FromBody] ChangePasswordRequest request,
