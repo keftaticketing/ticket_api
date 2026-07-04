@@ -37,6 +37,7 @@ public sealed class IdentityAuthService(
             user.UserName ?? username,
             user.FullName,
             roles.ToList(),
-            user.MustChangePassword);
+            user.MustChangePassword,
+            user.SelectedStationId);
     }
 }

@@ -34,6 +34,9 @@ public static class DomainErrors
     public static Error StationAssignmentAlreadyActive =>
         Error.Conflict("StationAssignment.AlreadyActive", "This user already has an active assignment for the selected station.");
 
+    public static Error SelectedStationNotAssigned =>
+        Error.Validation("StationAssignment.SelectedStationNotAssigned", "The selected station is not an active assignment for this user.");
+
     public static Error UsernameRequired =>
         Error.Validation("User.UsernameRequired", "Username is required.");
 

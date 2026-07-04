@@ -7,7 +7,8 @@ public sealed record AuthenticatedUser(
     string Username,
     string FullName,
     IReadOnlyList<string> Roles,
-    bool MustChangePassword);
+    bool MustChangePassword,
+    Guid? SelectedStationId);
 
 public sealed record AuthTokens(
     string AccessToken,

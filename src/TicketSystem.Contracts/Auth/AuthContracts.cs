@@ -2,6 +2,8 @@ namespace TicketSystem.Contracts.Auth;
 
 public sealed record LoginRequest(string Username, string Password);
 
+public sealed record SetSelectedStationRequest(Guid? StationId);
+
 public sealed record StationAssignmentResponse(
     Guid AssignmentId,
     Guid StationId,
@@ -23,6 +25,7 @@ public sealed record LoginResponse(
     string FullName,
     bool MustChangePassword,
     Guid? DefaultStationId,
+    Guid? SelectedStationId,
     IReadOnlyList<StationAssignmentResponse> StationAssignments);
 
 public sealed record RefreshTokenRequest(string RefreshToken);
@@ -38,6 +41,7 @@ public sealed record CurrentUserResponse(
     string FullName,
     bool MustChangePassword,
     Guid? DefaultStationId,
+    Guid? SelectedStationId,
     IReadOnlyList<StationAssignmentResponse> StationAssignments);
 
 public sealed record AuthTokenResponse(
@@ -51,4 +55,5 @@ public sealed record AuthTokenResponse(
     string FullName,
     bool MustChangePassword,
     Guid? DefaultStationId,
+    Guid? SelectedStationId,
     IReadOnlyList<StationAssignmentResponse> StationAssignments);

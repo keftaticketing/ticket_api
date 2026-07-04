@@ -21,6 +21,11 @@ public interface IAuthService
 
     Task<ErrorOr<CurrentUserResponse>> GetMeAsync(Guid userId, CancellationToken cancellationToken = default);
 
+    Task<ErrorOr<CurrentUserResponse>> SetSelectedStationAsync(
+        Guid userId,
+        SetSelectedStationRequest request,
+        CancellationToken cancellationToken = default);
+
     Task LogoutAsync(LogoutRequest request, CancellationToken cancellationToken = default);
 }
 
@@ -45,7 +50,10 @@ public sealed class AuthService(
         }
 
         var tokens = await IssueTokensAsync(authResult.Value, cancellationToken);
-        var stationContext = await GetStationContextAsync(authResult.Value.Id, cancellationToken);
+        var stationContext = await GetStationContextAsync(
+            authResult.Value.Id,
+            authResult.Value.SelectedStationId,
+            cancellationToken);
         return new LoginResponse(
             tokens.AccessToken,
             tokens.AccessExpiresIn,
@@ -57,6 +65,7 @@ public sealed class AuthService(
             tokens.FullName,
             tokens.MustChangePassword,
             stationContext.DefaultStationId,
+            stationContext.SelectedStationId,
             stationContext.Assignments);
     }
 
@@ -74,7 +83,7 @@ public sealed class AuthService(
 
         var user = rotation.Value.User;
         var access = CreateAccess(user);
-        var stationContext = await GetStationContextAsync(user.Id, cancellationToken);
+        var stationContext = await GetStationContextAsync(user.Id, user.SelectedStationId, cancellationToken);
         return new AuthTokenResponse(
             access.Token,
             access.ExpiresIn,
@@ -86,6 +95,7 @@ public sealed class AuthService(
             user.FullName,
             user.MustChangePassword,
             stationContext.DefaultStationId,
+            stationContext.SelectedStationId,
             stationContext.Assignments);
     }
 
@@ -107,7 +117,7 @@ public sealed class AuthService(
         var user = changeResult.Value;
         var access = CreateAccess(user);
         var refresh = await refreshTokenService.IssueAsync(user.Id, cancellationToken);
-        var stationContext = await GetStationContextAsync(user.Id, cancellationToken);
+        var stationContext = await GetStationContextAsync(user.Id, user.SelectedStationId, cancellationToken);
 
         return new AuthTokenResponse(
             access.Token,
@@ -120,6 +130,7 @@ public sealed class AuthService(
             user.FullName,
             user.MustChangePassword,
             stationContext.DefaultStationId,
+            stationContext.SelectedStationId,
             stationContext.Assignments);
     }
 
@@ -134,7 +145,7 @@ public sealed class AuthService(
         }
 
         var user = userResult.Value;
-        var stationContext = await GetStationContextAsync(user.Id, cancellationToken);
+        var stationContext = await GetStationContextAsync(user.Id, user.SelectedStationId, cancellationToken);
 
         return new CurrentUserResponse(
             user.Id,
@@ -143,7 +154,22 @@ public sealed class AuthService(
             user.FullName,
             user.MustChangePassword,
             stationContext.DefaultStationId,
+            stationContext.SelectedStationId,
             stationContext.Assignments);
+    }
+
+    public async Task<ErrorOr<CurrentUserResponse>> SetSelectedStationAsync(
+        Guid userId,
+        SetSelectedStationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await accountService.SetSelectedStationAsync(userId, request.StationId, cancellationToken);
+        if (result.IsError)
+        {
+            return result.Errors;
+        }
+
+        return await GetMeAsync(userId, cancellationToken);
     }
 
     public Task LogoutAsync(LogoutRequest request, CancellationToken cancellationToken = default) =>
@@ -174,7 +200,10 @@ public sealed class AuthService(
             user.Roles,
             user.MustChangePassword);
 
-    private async Task<StationContext> GetStationContextAsync(Guid userId, CancellationToken cancellationToken)
+    private async Task<StationContext> GetStationContextAsync(
+        Guid userId,
+        Guid? selectedStationId,
+        CancellationToken cancellationToken)
     {
         var assignments = await dbContext.UserStationAssignments
             .AsNoTracking()
@@ -193,11 +222,20 @@ public sealed class AuthService(
                 x.Station.IsImplicitDefault))
             .ToListAsync(cancellationToken);
 
+        var activeStationIds = assignments
+            .Select(x => x.StationId)
+            .ToHashSet();
+
         Guid? defaultStationId = assignments.Count == 1
             ? assignments[0].StationId
             : null;
 
-        return new StationContext(assignments, defaultStationId);
+        Guid? resolvedSelectedStationId = selectedStationId is Guid currentSelectedStationId
+            && activeStationIds.Contains(currentSelectedStationId)
+                ? currentSelectedStationId
+                : defaultStationId;
+
+        return new StationContext(assignments, defaultStationId, resolvedSelectedStationId);
     }
 
     private static string PrimaryRole(IReadOnlyList<string> roles) =>
@@ -205,7 +243,8 @@ public sealed class AuthService(
 
     private sealed record StationContext(
         IReadOnlyList<StationAssignmentResponse> Assignments,
-        Guid? DefaultStationId);
+        Guid? DefaultStationId,
+        Guid? SelectedStationId);
 }
 
 public static class RoleNames

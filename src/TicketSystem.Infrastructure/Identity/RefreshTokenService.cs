@@ -63,7 +63,8 @@ public sealed class RefreshTokenService(
                 user.UserName ?? string.Empty,
                 user.FullName,
                 roles.ToList(),
-                user.MustChangePassword),
+                user.MustChangePassword,
+                user.SelectedStationId),
             newPlainToken,
             GetRefreshExpiresInSeconds());
     }
