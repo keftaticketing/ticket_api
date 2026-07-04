@@ -2,15 +2,12 @@ namespace TicketSystem.Domain.Entities;
 
 using TicketSystem.Domain.Common;
 
-public class City : IAuditableEntity
+public class BusLevel : IAuditableEntity
 {
     public Guid Id { get; set; }
+    public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public decimal DistanceFromAddisKm { get; set; }
+    public int Rank { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-    public ICollection<Route> RoutesFrom { get; set; } = [];
-    public ICollection<Route> RoutesTo { get; set; } = [];
-    public ICollection<Station> Stations { get; set; } = [];
 }
