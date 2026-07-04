@@ -15,6 +15,8 @@ public static class DatabaseSeeder
     public static readonly Guid AdminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     public static readonly Guid TicketerId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     public static readonly Guid AddisAbabaCityId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private const string DefaultStationName = "Meneharia";
+    private const string DefaultStationNameAm = "መነሓሪያ";
 
     public static async Task SeedAsync(IServiceProvider services, ILogger logger)
     {
@@ -25,6 +27,10 @@ public static class DatabaseSeeder
         await SeedRolesAsync(scope.ServiceProvider);
         await SeedUsersAsync(scope.ServiceProvider, logger);
         await SeedCitiesAsync(db, logger);
+        await SeedStationsAsync(db, logger);
+        await SeedAssociationsAsync(db, logger);
+        await SeedBusLevelsAsync(db, logger);
+        await SeedBusTypesAsync(db, logger);
         await SalesPartySeeder.SeedAsync(db);
 
         var clock = scope.ServiceProvider.GetRequiredService<IBusinessClock>();
@@ -86,6 +92,136 @@ public static class DatabaseSeeder
             existing.DistanceFromAddisKm = distanceFromAddisKm;
             existing.IsActive = true;
         }
+    }
+
+    private static async Task SeedStationsAsync(TicketSystemDbContext db, ILogger logger)
+    {
+        var cities = await db.Cities.ToListAsync();
+        foreach (var city in cities)
+        {
+            var code = BuildDefaultStationCode(city.Name);
+            var existing = await db.Stations.SingleOrDefaultAsync(x => x.Code == code);
+            if (existing is null)
+            {
+                db.Stations.Add(new Station
+                {
+                    Id = Guid.NewGuid(),
+                    CityId = city.Id,
+                    Name = DefaultStationName,
+                    NameAm = DefaultStationNameAm,
+                    Code = code,
+                    IsImplicitDefault = true
+                });
+                logger.LogInformation("Seeded default station {StationCode} for city {CityName}.", code, city.Name);
+                continue;
+            }
+
+            existing.CityId = city.Id;
+            existing.Name = DefaultStationName;
+            existing.NameAm = DefaultStationNameAm;
+            existing.IsActive = true;
+            existing.IsImplicitDefault = true;
+        }
+    }
+
+    private static async Task SeedAssociationsAsync(TicketSystemDbContext db, ILogger logger)
+    {
+        if (await db.Associations.AnyAsync())
+        {
+            return;
+        }
+
+        db.Associations.Add(new Association
+        {
+            Id = Guid.NewGuid(),
+            Name = "Default Levy Association",
+            Code = "DEFAULT_ASSOC",
+            ShortName = "Default",
+            IsActive = true
+        });
+
+        logger.LogInformation("Seeded default association.");
+    }
+
+    private static async Task SeedBusLevelsAsync(TicketSystemDbContext db, ILogger logger)
+    {
+        (string Code, string Name, int Rank)[] levels =
+        [
+            ("L1", "Level 1", 1),
+            ("L2", "Level 2", 2),
+            ("L3", "Level 3", 3)
+        ];
+
+        foreach (var (code, name, rank) in levels)
+        {
+            var existing = await db.BusLevels.SingleOrDefaultAsync(x => x.Code == code);
+            if (existing is null)
+            {
+                db.BusLevels.Add(new BusLevel
+                {
+                    Id = Guid.NewGuid(),
+                    Code = code,
+                    Name = name,
+                    Rank = rank
+                });
+                logger.LogInformation("Seeded bus level {BusLevelCode}.", code);
+                continue;
+            }
+
+            existing.Name = name;
+            existing.Rank = rank;
+            existing.IsActive = true;
+        }
+    }
+
+    private static async Task SeedBusTypesAsync(TicketSystemDbContext db, ILogger logger)
+    {
+        (string Code, string Name)[] types =
+        [
+            ("regular", "Regular"),
+            ("special", "Special")
+        ];
+
+        foreach (var (code, name) in types)
+        {
+            var existing = await db.BusTypes.SingleOrDefaultAsync(x => x.Code == code);
+            if (existing is null)
+            {
+                db.BusTypes.Add(new BusType
+                {
+                    Id = Guid.NewGuid(),
+                    Code = code,
+                    Name = name
+                });
+                logger.LogInformation("Seeded bus type {BusTypeCode}.", code);
+                continue;
+            }
+
+            existing.Name = name;
+            existing.IsActive = true;
+        }
+    }
+
+    private static string BuildDefaultStationCode(string cityName)
+    {
+        Span<char> buffer = stackalloc char[cityName.Length];
+        var len = 0;
+        foreach (var ch in cityName.ToUpperInvariant())
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                buffer[len++] = ch;
+                continue;
+            }
+
+            if (len > 0 && buffer[len - 1] != '_')
+            {
+                buffer[len++] = '_';
+            }
+        }
+
+        var normalized = new string(buffer[..len]).TrimEnd('_');
+        return $"{normalized}_MAIN";
     }
 
     private static async Task SeedRolesAsync(IServiceProvider services)
