@@ -6,6 +6,9 @@ using TicketSystem.Domain.Entities;
 
 public interface IApplicationDbContext
 {
+    DbSet<Association> Associations { get; }
+    DbSet<BusLevel> BusLevels { get; }
+    DbSet<BusType> BusTypes { get; }
     DbSet<Bus> Buses { get; }
     DbSet<City> Cities { get; }
     DbSet<Station> Stations { get; }

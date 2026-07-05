@@ -49,6 +49,15 @@ public static class DomainErrors
     public static Error FullNameRequired =>
         Error.Validation("User.FullNameRequired", "Full name is required.");
 
+    public static Error AssociationNotFound =>
+        Error.NotFound("Association.NotFound", "Association not found.");
+
+    public static Error BusLevelNotFound =>
+        Error.NotFound("BusLevel.NotFound", "Bus level not found.");
+
+    public static Error BusTypeNotFound =>
+        Error.NotFound("BusType.NotFound", "Bus type not found.");
+
     public static Error BusNotFound =>
         Error.NotFound("Bus.NotFound", "Bus not found.");
 
@@ -120,6 +129,15 @@ public static class DomainErrors
 
     public static Error TicketerRequired =>
         Error.Forbidden("Ticket.TicketerRequired", "Only active ticketers can sell tickets.");
+
+    public static Error SellingStationNotAssigned =>
+        Error.Validation("Ticket.SellingStationNotAssigned", "The ticketer has no active station assignment.");
+
+    public static Error SellingStationNotSelected =>
+        Error.Validation("Ticket.SellingStationNotSelected", "Select a selling station before selling tickets.");
+
+    public static Error ScheduleOriginStationMismatch =>
+        Error.Validation("Ticket.ScheduleOriginStationMismatch", "Tickets can only be sold for schedules departing from the ticketer's assigned station.");
 
     public static Error CityNotFound =>
         Error.NotFound("City.NotFound", "City not found.");

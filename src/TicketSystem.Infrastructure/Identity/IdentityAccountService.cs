@@ -280,6 +280,47 @@ public sealed class IdentityAccountService(
         return MapAuthenticatedUser(user, roles);
     }
 
+    public async Task<ErrorOr<Guid>> ResolveSellingStationIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await userManager.Users
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null || !user.IsActive)
+        {
+            return DomainErrors.UserNotFound;
+        }
+
+        var activeStationIds = await dbContext.UserStationAssignments
+            .AsNoTracking()
+            .Where(x => x.UserId == userId && x.EndedAtUtc == null)
+            .Select(x => x.StationId)
+            .ToListAsync(cancellationToken);
+
+        if (activeStationIds.Count == 0)
+        {
+            return DomainErrors.SellingStationNotAssigned;
+        }
+
+        var activeStationIdSet = activeStationIds.ToHashSet();
+        Guid? defaultStationId = activeStationIds.Count == 1
+            ? activeStationIds[0]
+            : null;
+
+        Guid? resolvedStationId = user.SelectedStationId is Guid selectedStationId
+            && activeStationIdSet.Contains(selectedStationId)
+                ? selectedStationId
+                : defaultStationId;
+
+        if (resolvedStationId is not Guid sellingStationId)
+        {
+            return DomainErrors.SellingStationNotSelected;
+        }
+
+        return sellingStationId;
+    }
+
     public async Task<ErrorOr<UserSummaryResponse>> SetUserActiveAsync(
         Guid userId,
         bool isActive,

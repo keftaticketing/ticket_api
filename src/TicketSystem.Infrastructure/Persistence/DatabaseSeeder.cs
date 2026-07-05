@@ -32,6 +32,7 @@ public static class DatabaseSeeder
         await SeedAssociationsAsync(db, logger);
         await SeedBusLevelsAsync(db, logger);
         await SeedBusTypesAsync(db, logger);
+        await BackfillBusClassificationAsync(db, logger);
         var clock = scope.ServiceProvider.GetRequiredService<IBusinessClock>();
         await SeedUserStationAssignmentsAsync(db, logger, clock);
         await SalesPartySeeder.SeedAsync(db);
@@ -200,6 +201,35 @@ public static class DatabaseSeeder
 
             existing.Name = name;
             existing.IsActive = true;
+        }
+    }
+
+    private static async Task BackfillBusClassificationAsync(TicketSystemDbContext db, ILogger logger)
+    {
+        var defaultAssociation = await db.Associations
+            .SingleOrDefaultAsync(x => x.Code == "DEFAULT_ASSOC" && x.IsActive);
+        var defaultBusLevel = await db.BusLevels
+            .SingleOrDefaultAsync(x => x.Code == "L1" && x.IsActive);
+        var defaultBusType = await db.BusTypes
+            .SingleOrDefaultAsync(x => x.Code == "regular" && x.IsActive);
+
+        if (defaultAssociation is null || defaultBusLevel is null || defaultBusType is null)
+        {
+            return;
+        }
+
+        var busesNeedingClassification = await db.Buses
+            .Where(x => x.AssociationId == Guid.Empty
+                        || x.BusLevelId == Guid.Empty
+                        || x.BusTypeId == Guid.Empty)
+            .ToListAsync();
+
+        foreach (var bus in busesNeedingClassification)
+        {
+            bus.AssociationId = defaultAssociation.Id;
+            bus.BusLevelId = defaultBusLevel.Id;
+            bus.BusTypeId = defaultBusType.Id;
+            logger.LogInformation("Backfilled bus classification for bus {BusId}.", bus.Id);
         }
     }
 

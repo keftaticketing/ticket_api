@@ -564,6 +564,16 @@ public sealed class ScheduleEndpointsTests(TicketSystemWebApplicationFactory fac
 public sealed class TicketEndpointsTests(TicketSystemWebApplicationFactory factory) : EndpointTestBase(factory)
 {
     [Fact]
+    public async Task Ticketer_HasSeededStationAssignment()
+    {
+        var response = await AdminClient().GetAsync(
+            $"/api/users/{TestDataSeeder.TicketerId}/station-assignments");
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<List<UserStationAssignmentSummaryResponse>>();
+        body.Should().NotBeEmpty();
+    }
+
+    [Fact]
     public async Task SellCashTicket_AsTicketer_ConfirmsTicket()
     {
         var scheduleId = await SeedScheduleAsync("AA-30001", 20);
@@ -665,6 +675,45 @@ public sealed class TicketEndpointsTests(TicketSystemWebApplicationFactory facto
             new SellCashTicketRequest(scheduleId, 4, "Admin Try", "0911000099", null));
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
+
+    [Fact]
+    public async Task SellCashTicket_WhenOriginStationMismatch_ReturnsBadRequest()
+    {
+        var scheduleId = await SeedScheduleAsync("AA-30007", 20);
+        var adamaStationId = await GetDefaultStationIdForCityAsync("Adama");
+        var admin = AdminClient();
+
+        await admin.PostAsJsonAsync(
+            $"/api/users/{TestDataSeeder.TicketerId}/station-assignments",
+            new CreateUserStationAssignmentRequest(adamaStationId));
+
+        var ticketer = TicketerClient();
+        await ticketer.PutAsJsonAsync(
+            "/api/auth/me/selected-station",
+            new SetSelectedStationRequest(adamaStationId));
+
+        var response = await ticketer.PostAsJsonAsync("/api/tickets/cash",
+            new SellCashTicketRequest(scheduleId, 4, "Wrong Station", "0911000100", null));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task SellCashTicket_WhenMultipleAssignmentsWithoutSelection_ReturnsBadRequest()
+    {
+        var scheduleId = await SeedScheduleAsync("AA-30008", 20);
+        var adamaStationId = await GetDefaultStationIdForCityAsync("Adama");
+        var admin = AdminClient();
+
+        await admin.PostAsJsonAsync(
+            $"/api/users/{TestDataSeeder.TicketerId}/station-assignments",
+            new CreateUserStationAssignmentRequest(adamaStationId));
+
+        var response = await TicketerClient().PostAsJsonAsync("/api/tickets/cash",
+            new SellCashTicketRequest(scheduleId, 4, "No Selection", "0911000101", null));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }
 
 [Collection("Api")]
@@ -765,6 +814,19 @@ public abstract class EndpointTestBase : IAsyncLifetime
         var created = await client.PostAsJsonAsync("/api/schedules", new CreateScheduleRequest(routeId, busId, departure, 1));
         var schedule = await created.Content.ReadFromJsonAsync<ScheduleResponse>();
         return schedule!.Id;
+    }
+
+    protected async Task<Guid> GetDefaultStationIdForCityAsync(string cityName)
+    {
+        var client = AdminClient();
+        await EnsureCityAsync("Addis Ababa");
+        var toCityId = await EnsureCityAsync(cityName);
+        var routeResponse = await client.PostAsJsonAsync("/api/routes", new CreateRouteRequest(toCityId));
+        routeResponse.EnsureSuccessStatusCode();
+        var route = await routeResponse.Content.ReadFromJsonAsync<RouteResponse>();
+        return cityName.Equals("Addis Ababa", StringComparison.OrdinalIgnoreCase)
+            ? route!.FromStation.Id
+            : route!.ToStation.Id;
     }
 
     public Task InitializeAsync() => Factory.ResetDatabaseAsync();

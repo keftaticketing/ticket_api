@@ -6,7 +6,10 @@ public sealed record CreateBusRequest(
     string DelegatePhone,
     string SideNumber,
     string PlateNumber,
-    int SeatCount);
+    int SeatCount,
+    Guid? AssociationId = null,
+    Guid? BusLevelId = null,
+    Guid? BusTypeId = null);
 
 public sealed record UpdateBusRequest(
     string OwnerName,
@@ -15,7 +18,26 @@ public sealed record UpdateBusRequest(
     string SideNumber,
     string PlateNumber,
     int SeatCount,
-    bool IsActive);
+    bool IsActive,
+    Guid? AssociationId = null,
+    Guid? BusLevelId = null,
+    Guid? BusTypeId = null);
+
+public sealed record BusAssociationResponse(
+    Guid Id,
+    string Name,
+    string Code);
+
+public sealed record BusLevelReferenceResponse(
+    Guid Id,
+    string Code,
+    string Name,
+    int Rank);
+
+public sealed record BusTypeReferenceResponse(
+    Guid Id,
+    string Code,
+    string Name);
 
 public sealed record BusResponse(
     Guid Id,
@@ -25,5 +47,8 @@ public sealed record BusResponse(
     string SideNumber,
     string PlateNumber,
     int SeatCount,
+    BusAssociationResponse Association,
+    BusLevelReferenceResponse BusLevel,
+    BusTypeReferenceResponse BusType,
     bool IsActive,
     DateTime CreatedAt);
