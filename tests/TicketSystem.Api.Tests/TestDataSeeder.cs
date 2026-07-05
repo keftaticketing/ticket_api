@@ -31,6 +31,7 @@ internal static class TestDataSeeder
         await SeedRolesAsync(services);
         await SeedUsersAsync(services);
         await SeedCitiesAsync(db);
+        await SeedStationsAsync(db);
         await SalesPartySeeder.SeedAsync(db);
 
         var clock = services.GetRequiredService<IBusinessClock>();
@@ -81,6 +82,54 @@ internal static class TestDataSeeder
                 DistanceFromAddisKm = distanceFromAddisKm
             });
         }
+    }
+
+    private static async Task SeedStationsAsync(TicketSystemDbContext db)
+    {
+        const string defaultStationName = "Meneharia";
+        const string defaultStationNameAm = "መነሓሪያ";
+
+        var cities = await db.Cities.ToListAsync();
+        foreach (var city in cities)
+        {
+            var code = BuildDefaultStationCode(city.Name);
+            if (await db.Stations.AnyAsync(x => x.Code == code))
+            {
+                continue;
+            }
+
+            db.Stations.Add(new Station
+            {
+                Id = Guid.NewGuid(),
+                CityId = city.Id,
+                Name = defaultStationName,
+                NameAm = defaultStationNameAm,
+                Code = code,
+                IsImplicitDefault = true
+            });
+        }
+    }
+
+    private static string BuildDefaultStationCode(string cityName)
+    {
+        Span<char> buffer = stackalloc char[cityName.Length];
+        var len = 0;
+        foreach (var ch in cityName.ToUpperInvariant())
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                buffer[len++] = ch;
+                continue;
+            }
+
+            if (len > 0 && buffer[len - 1] != '_')
+            {
+                buffer[len++] = '_';
+            }
+        }
+
+        var normalized = new string(buffer[..len]).TrimEnd('_');
+        return $"{normalized}_MAIN";
     }
 
     private static async Task SeedRolesAsync(IServiceProvider services)

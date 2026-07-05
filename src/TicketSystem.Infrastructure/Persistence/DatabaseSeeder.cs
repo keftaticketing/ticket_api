@@ -28,6 +28,7 @@ public static class DatabaseSeeder
         await SeedUsersAsync(scope.ServiceProvider, logger);
         await SeedCitiesAsync(db, logger);
         await SeedStationsAsync(db, logger);
+        await BackfillRouteStationsAsync(db, logger);
         await SeedAssociationsAsync(db, logger);
         await SeedBusLevelsAsync(db, logger);
         await SeedBusTypesAsync(db, logger);
@@ -199,6 +200,41 @@ public static class DatabaseSeeder
 
             existing.Name = name;
             existing.IsActive = true;
+        }
+    }
+
+    private static async Task BackfillRouteStationsAsync(TicketSystemDbContext db, ILogger logger)
+    {
+        var routesNeedingStations = await db.Routes
+            .Where(x => x.FromStationId == Guid.Empty || x.ToStationId == Guid.Empty)
+            .ToListAsync();
+        if (routesNeedingStations.Count == 0)
+        {
+            return;
+        }
+
+        var defaultStations = await db.Stations
+            .Where(x => x.IsImplicitDefault && x.IsActive)
+            .ToDictionaryAsync(x => x.CityId);
+
+        foreach (var route in routesNeedingStations)
+        {
+            if (!defaultStations.TryGetValue(route.FromCityId, out var fromStation)
+                || !defaultStations.TryGetValue(route.ToCityId, out var toStation))
+            {
+                logger.LogWarning(
+                    "Skipping route {RouteId} backfill because default stations are missing.",
+                    route.Id);
+                continue;
+            }
+
+            route.FromStationId = fromStation.Id;
+            route.ToStationId = toStation.Id;
+            logger.LogInformation(
+                "Backfilled route {RouteId} with stations {FromStationCode} -> {ToStationCode}.",
+                route.Id,
+                fromStation.Code,
+                toStation.Code);
         }
     }
 

@@ -9,7 +9,8 @@ public sealed class RouteConfiguration : IEntityTypeConfiguration<Route>
     public void Configure(EntityTypeBuilder<Route> builder)
     {
         builder.HasKey(x => x.Id);
-        builder.HasIndex(x => new { x.FromCityId, x.ToCityId }).IsUnique();
+        builder.HasIndex(x => new { x.FromStationId, x.ToStationId }).IsUnique();
+        builder.HasIndex(x => new { x.FromCityId, x.ToCityId });
         builder.Property(x => x.DistanceKm).HasPrecision(10, 2);
 
         builder.HasOne(x => x.FromCity)
@@ -20,6 +21,16 @@ public sealed class RouteConfiguration : IEntityTypeConfiguration<Route>
         builder.HasOne(x => x.ToCity)
             .WithMany(x => x.RoutesTo)
             .HasForeignKey(x => x.ToCityId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(x => x.FromStation)
+            .WithMany()
+            .HasForeignKey(x => x.FromStationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(x => x.ToStation)
+            .WithMany()
+            .HasForeignKey(x => x.ToStationId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
