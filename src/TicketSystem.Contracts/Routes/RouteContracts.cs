@@ -1,17 +1,31 @@
 namespace TicketSystem.Contracts.Routes;
 
-public sealed record CreateRouteRequest(Guid ToCityId);
+public sealed record CreateRouteRequest(
+    Guid ToCityId,
+    Guid? ToStationId = null);
 
 public sealed record UpdateRouteRequest(
     Guid ToCityId,
-    bool IsActive);
+    bool IsActive,
+    Guid? ToStationId = null);
+
+public sealed record RouteStationResponse(
+    Guid Id,
+    string Name,
+    string NameAm,
+    string Code,
+    Guid CityId,
+    string CityName,
+    bool IsImplicitDefault);
 
 public sealed record RouteResponse(
     Guid Id,
     Guid FromCityId,
     string FromCity,
+    RouteStationResponse FromStation,
     Guid ToCityId,
     string ToCity,
+    RouteStationResponse ToStation,
     decimal DistanceKm,
     bool IsActive,
     DateTime CreatedAt);
@@ -34,6 +48,8 @@ public sealed record RouteSeatMapsResponse(
     Guid RouteId,
     string FromCity,
     string ToCity,
+    RouteStationResponse FromStation,
+    RouteStationResponse ToStation,
     Guid DestinationCityId,
     decimal DistanceKm,
     DateOnly Date,

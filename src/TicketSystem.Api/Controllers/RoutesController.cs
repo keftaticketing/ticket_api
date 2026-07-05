@@ -24,9 +24,10 @@ public sealed class RoutesController(IRouteService routeService, IBusinessClock 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<RouteResponse>>> GetAll(
         [FromQuery] Guid? toCityId,
+        [FromQuery] Guid? fromStationId,
         CancellationToken cancellationToken)
     {
-        var result = await routeService.GetAllAsync(toCityId, cancellationToken);
+        var result = await routeService.GetAllAsync(toCityId, fromStationId, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -35,6 +36,7 @@ public sealed class RoutesController(IRouteService routeService, IBusinessClock 
     public async Task<ActionResult<RouteSeatMapsResponse>> GetSeatMapsByDestination(
         [FromQuery] Guid destinationCityId,
         [FromQuery] string date,
+        [FromQuery] Guid? fromStationId,
         CancellationToken cancellationToken)
     {
         var parsedDate = TravelDateParser.ParseLocalDate(date, clock);
@@ -43,7 +45,11 @@ public sealed class RoutesController(IRouteService routeService, IBusinessClock 
             return parsedDate.ToErrorActionResult<DateOnly, RouteSeatMapsResponse>();
         }
 
-        var result = await routeService.GetSeatMapsByDestinationAsync(destinationCityId, parsedDate.Value, cancellationToken);
+        var result = await routeService.GetSeatMapsByDestinationAsync(
+            destinationCityId,
+            parsedDate.Value,
+            fromStationId,
+            cancellationToken);
         return result.ToActionResult();
     }
 

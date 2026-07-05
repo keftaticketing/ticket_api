@@ -37,6 +37,12 @@ public static class DomainErrors
     public static Error SelectedStationNotAssigned =>
         Error.Validation("StationAssignment.SelectedStationNotAssigned", "The selected station is not an active assignment for this user.");
 
+    public static Error StationCityMismatch =>
+        Error.Validation("Station.CityMismatch", "The selected station does not belong to the specified city.");
+
+    public static Error DefaultStationNotFound =>
+        Error.NotFound("Station.DefaultNotFound", "No default station is configured for the city.");
+
     public static Error UsernameRequired =>
         Error.Validation("User.UsernameRequired", "Username is required.");
 
