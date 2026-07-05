@@ -36,6 +36,11 @@ public interface IIdentityAccountService
         Guid assignmentId,
         CancellationToken cancellationToken = default);
 
+    Task<ErrorOr<AuthenticatedUser>> SetSelectedStationAsync(
+        Guid userId,
+        Guid? stationId,
+        CancellationToken cancellationToken = default);
+
     Task<ErrorOr<UserSummaryResponse>> SetUserActiveAsync(
         Guid userId,
         bool isActive,

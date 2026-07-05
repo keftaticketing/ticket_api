@@ -47,6 +47,24 @@ public sealed class AuthController(
     }
 
     [Authorize]
+    [HttpPut("me/selected-station")]
+    public async Task<ActionResult<CurrentUserResponse>> SetSelectedStation(
+        [FromBody] SetSelectedStationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (currentUser.UserId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await authService.SetSelectedStationAsync(
+            currentUser.UserId.Value,
+            request,
+            cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [Authorize]
     [HttpPost("change-password")]
     public async Task<ActionResult<AuthTokenResponse>> ChangePassword(
         [FromBody] ChangePasswordRequest request,

@@ -225,10 +225,59 @@ public sealed class IdentityAccountService(
         if (assignment.EndedAtUtc is null)
         {
             assignment.EndedAtUtc = DateTime.UtcNow;
+            var user = await userManager.Users
+                .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+            if (user is not null && user.SelectedStationId == assignment.StationId)
+            {
+                user.SelectedStationId = null;
+            }
+
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
         return MapStationAssignment(assignment);
+    }
+
+    public async Task<ErrorOr<AuthenticatedUser>> SetSelectedStationAsync(
+        Guid userId,
+        Guid? stationId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await userManager.Users
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null || !user.IsActive)
+        {
+            return DomainErrors.UserNotFound;
+        }
+
+        if (stationId is not null)
+        {
+            var station = await dbContext.Stations
+                .AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == stationId.Value && x.IsActive, cancellationToken);
+            if (station is null)
+            {
+                return DomainErrors.StationNotFound;
+            }
+
+            var hasActiveAssignment = await dbContext.UserStationAssignments
+                .AsNoTracking()
+                .AnyAsync(
+                    x => x.UserId == userId
+                        && x.StationId == stationId.Value
+                        && x.EndedAtUtc == null,
+                    cancellationToken);
+            if (!hasActiveAssignment)
+            {
+                return DomainErrors.SelectedStationNotAssigned;
+            }
+        }
+
+        user.SelectedStationId = stationId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var roles = await userManager.GetRolesAsync(user);
+        return MapAuthenticatedUser(user, roles);
     }
 
     public async Task<ErrorOr<UserSummaryResponse>> SetUserActiveAsync(
@@ -286,7 +335,8 @@ public sealed class IdentityAccountService(
             user.UserName ?? string.Empty,
             user.FullName,
             roles.ToList(),
-            user.MustChangePassword);
+            user.MustChangePassword,
+            user.SelectedStationId);
 
     private static UserStationAssignmentSummaryResponse MapStationAssignment(Domain.Entities.UserStationAssignment assignment) =>
         new(
