@@ -41,6 +41,10 @@ public interface IIdentityAccountService
         Guid? stationId,
         CancellationToken cancellationToken = default);
 
+    Task<ErrorOr<Guid>> ResolveSellingStationIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
     Task<ErrorOr<UserSummaryResponse>> SetUserActiveAsync(
         Guid userId,
         bool isActive,

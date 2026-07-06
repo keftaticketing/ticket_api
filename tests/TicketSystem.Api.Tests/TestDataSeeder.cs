@@ -31,7 +31,9 @@ internal static class TestDataSeeder
         await SeedRolesAsync(services);
         await SeedUsersAsync(services);
         await SeedCitiesAsync(db);
-        await SeedStationsAsync(db);
+        await db.SaveChangesAsync();
+        await SeedStationsAsync(db, services);
+        await SeedReferenceDataAsync(db);
         await SalesPartySeeder.SeedAsync(db);
 
         var clock = services.GetRequiredService<IBusinessClock>();
@@ -51,7 +53,36 @@ internal static class TestDataSeeder
             Value = "false"
         });
 
+        EnsureTicketerStationAssignment(db, clock);
         await db.SaveChangesAsync();
+    }
+
+    private static void EnsureTicketerStationAssignment(TicketSystemDbContext db, IBusinessClock clock)
+    {
+        var addisStationCode = BuildDefaultStationCode(CityNames.AddisAbaba);
+        var addisStation = db.Stations.Local.FirstOrDefault(x => x.Code == addisStationCode)
+            ?? db.Stations.FirstOrDefault(x => x.Code == addisStationCode);
+        if (addisStation is null)
+        {
+            return;
+        }
+
+        if (db.UserStationAssignments.Local.Any(x =>
+                x.UserId == TicketerId
+                && x.StationId == addisStation.Id
+                && x.EndedAtUtc == null))
+        {
+            return;
+        }
+
+        db.UserStationAssignments.Add(new UserStationAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = TicketerId,
+            StationId = addisStation.Id,
+            AssignedAtUtc = clock.UtcNow,
+            CreatedAt = clock.UtcNow
+        });
     }
 
     private static async Task SeedCitiesAsync(TicketSystemDbContext db)
@@ -84,10 +115,11 @@ internal static class TestDataSeeder
         }
     }
 
-    private static async Task SeedStationsAsync(TicketSystemDbContext db)
+    private static async Task SeedStationsAsync(TicketSystemDbContext db, IServiceProvider services)
     {
         const string defaultStationName = "Meneharia";
         const string defaultStationNameAm = "መነሓሪያ";
+        var clock = services.GetRequiredService<IBusinessClock>();
 
         var cities = await db.Cities.ToListAsync();
         foreach (var city in cities)
@@ -98,15 +130,28 @@ internal static class TestDataSeeder
                 continue;
             }
 
+            var stationId = Guid.NewGuid();
             db.Stations.Add(new Station
             {
-                Id = Guid.NewGuid(),
+                Id = stationId,
                 CityId = city.Id,
                 Name = defaultStationName,
                 NameAm = defaultStationNameAm,
                 Code = code,
                 IsImplicitDefault = true
             });
+
+            if (string.Equals(city.Name, CityNames.AddisAbaba, StringComparison.OrdinalIgnoreCase))
+            {
+                db.UserStationAssignments.Add(new UserStationAssignment
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = TicketerId,
+                    StationId = stationId,
+                    AssignedAtUtc = clock.UtcNow,
+                    CreatedAt = clock.UtcNow
+                });
+            }
         }
     }
 
@@ -130,6 +175,65 @@ internal static class TestDataSeeder
 
         var normalized = new string(buffer[..len]).TrimEnd('_');
         return $"{normalized}_MAIN";
+    }
+
+    private static async Task SeedReferenceDataAsync(TicketSystemDbContext db)
+    {
+        if (!await db.Associations.AnyAsync())
+        {
+            db.Associations.Add(new Association
+            {
+                Id = Guid.NewGuid(),
+                Name = "Default Levy Association",
+                Code = "DEFAULT_ASSOC",
+                ShortName = "Default",
+                IsActive = true
+            });
+        }
+
+        (string Code, string Name, int Rank)[] levels =
+        [
+            ("L1", "Level 1", 1),
+            ("L2", "Level 2", 2),
+            ("L3", "Level 3", 3)
+        ];
+
+        foreach (var (code, name, rank) in levels)
+        {
+            if (await db.BusLevels.AnyAsync(x => x.Code == code))
+            {
+                continue;
+            }
+
+            db.BusLevels.Add(new BusLevel
+            {
+                Id = Guid.NewGuid(),
+                Code = code,
+                Name = name,
+                Rank = rank
+            });
+        }
+
+        (string Code, string Name)[] types =
+        [
+            ("regular", "Regular"),
+            ("special", "Special")
+        ];
+
+        foreach (var (code, name) in types)
+        {
+            if (await db.BusTypes.AnyAsync(x => x.Code == code))
+            {
+                continue;
+            }
+
+            db.BusTypes.Add(new BusType
+            {
+                Id = Guid.NewGuid(),
+                Code = code,
+                Name = name
+            });
+        }
     }
 
     private static async Task SeedRolesAsync(IServiceProvider services)

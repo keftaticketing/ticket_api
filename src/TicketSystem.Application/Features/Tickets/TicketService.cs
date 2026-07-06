@@ -25,6 +25,7 @@ public interface ITicketService
 public sealed class TicketService(
     IApplicationDbContext db,
     IIdentityUserService identityUserService,
+    IIdentityAccountService accountService,
     IBusinessClock clock,
     ITicketSaleDistributionWriter distributionWriter,
     ISeatEventPublisher seatEvents) : ITicketService
@@ -49,6 +50,12 @@ public sealed class TicketService(
             return DomainErrors.TicketerRequired;
         }
 
+        var sellingStationResult = await accountService.ResolveSellingStationIdAsync(ticketerId, cancellationToken);
+        if (sellingStationResult.IsError)
+        {
+            return sellingStationResult.Errors;
+        }
+
         var ticketerName = await identityUserService.GetFullNameAsync(ticketerId, cancellationToken)
             ?? "Unknown";
 
@@ -62,6 +69,11 @@ public sealed class TicketService(
         if (schedule is null)
         {
             return DomainErrors.ScheduleNotFound;
+        }
+
+        if (schedule.Route.FromStationId != sellingStationResult.Value)
+        {
+            return DomainErrors.ScheduleOriginStationMismatch;
         }
 
         if (schedule.Status != ScheduleStatus.Scheduled && schedule.Status != ScheduleStatus.Boarding)
