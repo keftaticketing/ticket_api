@@ -14,6 +14,11 @@ public class Schedule : IAuditableEntity
     public Guid AssociationId { get; set; }
     public Guid BusLevelId { get; set; }
     public Guid BusTypeId { get; set; }
+    public Guid TariffId { get; set; }
+    public decimal ResolvedRatePerKm { get; set; }
+    public decimal ResolvedDistanceKm { get; set; }
+    public decimal ResolvedTicketPrice { get; set; }
+    public PriceResolutionMode PriceResolutionMode { get; set; } = PriceResolutionMode.Rule;
     public ScheduleStatus Status { get; set; } = ScheduleStatus.Scheduled;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -22,5 +27,6 @@ public class Schedule : IAuditableEntity
     public Association Association { get; set; } = null!;
     public BusLevel BusLevel { get; set; } = null!;
     public BusType BusType { get; set; } = null!;
+    public Tariff Tariff { get; set; } = null!;
     public ICollection<Ticket> Tickets { get; set; } = [];
 }

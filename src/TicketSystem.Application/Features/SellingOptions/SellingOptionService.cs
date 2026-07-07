@@ -7,7 +7,6 @@ using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Errors;
 using TicketSystem.Application.Features.Auth;
 using TicketSystem.Application.Features.Schedules;
-using TicketSystem.Application.Features.Tariffs;
 using TicketSystem.Contracts.Routes;
 using TicketSystem.Contracts.SellingOptions;
 using TicketSystem.Domain.Common;
@@ -65,18 +64,9 @@ public sealed class SellingOptionService(
                      .OrderBy(x => x.First().BusLevel.Rank)
                      .ThenBy(x => x.First().BusType.Code))
         {
-            var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
-                db,
-                group.Key.BusLevelId,
-                group.Key.BusTypeId,
-                cancellationToken);
-            if (tariffResult.IsError)
-            {
-                return tariffResult.Errors;
-            }
-
-            var ratePerKm = tariffResult.Value.RatePerKm;
-            var ticketPrice = route.DistanceKm * ratePerKm;
+            var sample = group.First();
+            var ratePerKm = sample.ResolvedRatePerKm;
+            var ticketPrice = sample.ResolvedTicketPrice;
             var availability = group
                 .Select(schedule => BuildAvailability(schedule, soldCounts))
                 .Where(x => x.AvailableSeatCount > 0)
@@ -87,7 +77,6 @@ public sealed class SellingOptionService(
                 continue;
             }
 
-            var sample = group.First();
             summaries.Add(new SellingOptionSummaryResponse(
                 SellingOptionKey.Build(route.Id, sample.AssociationId, sample.BusLevelId, sample.BusTypeId, date),
                 route.Id,
@@ -102,7 +91,7 @@ public sealed class SellingOptionService(
                     sample.BusLevel.Name,
                     sample.BusLevel.Rank),
                 new SellingOptionBusTypeResponse(sample.BusType.Id, sample.BusType.Code, sample.BusType.Name),
-                route.DistanceKm,
+                sample.ResolvedDistanceKm,
                 ratePerKm,
                 ticketPrice,
                 clock.ToLocalDateTime(availability.Min(x => x.Schedule.DepartureAt)),
