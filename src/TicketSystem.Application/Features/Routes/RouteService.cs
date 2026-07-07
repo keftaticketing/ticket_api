@@ -4,6 +4,7 @@ using ErrorOr;
 using Microsoft.EntityFrameworkCore;
 using TicketSystem.Application.Abstractions.Persistence;
 using TicketSystem.Application.Abstractions.Time;
+using TicketSystem.Application.Features.Auth;
 using TicketSystem.Application.Features.Schedules;
 using TicketSystem.Application.Errors;
 using TicketSystem.Contracts.Routes;
@@ -19,7 +20,10 @@ public interface IRouteService
         Guid? toCityId,
         Guid? fromStationId,
         CancellationToken cancellationToken = default);
-    Task<ErrorOr<RouteResponse>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<ErrorOr<RouteResponse>> GetByIdAsync(
+        Guid id,
+        Guid? scopedFromStationId = null,
+        CancellationToken cancellationToken = default);
     Task<ErrorOr<RouteResponse>> UpdateAsync(Guid id, UpdateRouteRequest request, CancellationToken cancellationToken = default);
     Task<ErrorOr<RouteSeatMapsResponse>> GetSeatMapsByDestinationAsync(
         Guid destinationCityId,
@@ -130,9 +134,31 @@ public sealed class RouteService(IApplicationDbContext db, IBusinessClock clock)
         return routes.Select(Map).ToList();
     }
 
-    public async Task<ErrorOr<RouteResponse>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<ErrorOr<RouteResponse>> GetByIdAsync(
+        Guid id,
+        Guid? scopedFromStationId = null,
+        CancellationToken cancellationToken = default)
     {
-        return await MapByIdAsync(id, cancellationToken);
+        var route = await db.Routes.AsNoTracking()
+            .Include(x => x.FromCity)
+            .Include(x => x.FromStation)
+            .ThenInclude(x => x.City)
+            .Include(x => x.ToCity)
+            .Include(x => x.ToStation)
+            .ThenInclude(x => x.City)
+            .SingleOrDefaultAsync(x => x.Id == id && x.IsActive, cancellationToken);
+        if (route is null)
+        {
+            return DomainErrors.RouteNotFound;
+        }
+
+        var scopeResult = TicketerSellingScope.EnsureRouteOriginMatches(route.FromStationId, scopedFromStationId);
+        if (scopeResult.IsError)
+        {
+            return scopeResult.Errors;
+        }
+
+        return Map(route);
     }
 
     public async Task<ErrorOr<RouteResponse>> UpdateAsync(Guid id, UpdateRouteRequest request, CancellationToken cancellationToken = default)

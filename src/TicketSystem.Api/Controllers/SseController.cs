@@ -7,7 +7,9 @@ using ErrorOr;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using TicketSystem.Api.Extensions;
 using TicketSystem.Api.Options;
+using TicketSystem.Application.Abstractions.Authentication;
 using TicketSystem.Application.Abstractions.Realtime;
 using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Common;
@@ -18,6 +20,7 @@ using TicketSystem.Contracts.Sse;
 public sealed class SseController(
     ISeatEventPublisher seatEvents,
     IScheduleService scheduleService,
+    IIdentityAccountService accountService,
     IBusinessClock clock,
     IOptions<SseOptions> sseOptions,
     ILogger<SseController> logger) : ControllerBase
@@ -46,7 +49,14 @@ public sealed class SseController(
 
     private async Task StreamScheduleInternalAsync(Guid scheduleId, CancellationToken cancellationToken)
     {
-        var seatMap = await scheduleService.GetSeatMapAsync(scheduleId, cancellationToken);
+        var scope = await User.ResolveFromStationFilterAsync(null, accountService, cancellationToken);
+        if (scope.IsError)
+        {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        var seatMap = await scheduleService.GetSeatMapAsync(scheduleId, scope.Value, cancellationToken);
         if (seatMap.IsError)
         {
             Response.StatusCode = seatMap.FirstError.Type switch
@@ -78,7 +88,14 @@ public sealed class SseController(
             return;
         }
 
-        var schedules = await scheduleService.GetAllAsync(routeId, travelDate, cancellationToken);
+        var scope = await User.ResolveFromStationFilterAsync(null, accountService, cancellationToken);
+        if (scope.IsError)
+        {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        var schedules = await scheduleService.GetAllAsync(routeId, travelDate, scope.Value, cancellationToken);
         if (schedules.IsError)
         {
             Response.StatusCode = StatusCodes.Status400BadRequest;
