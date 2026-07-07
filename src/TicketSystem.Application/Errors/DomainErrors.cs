@@ -83,7 +83,7 @@ public static class DomainErrors
         Error.Validation("Route.InvalidDistance", "Distance must be greater than zero.");
 
     public static Error TariffNotFound =>
-        Error.NotFound("Tariff.NotFound", "No active tariff configured.");
+        Error.NotFound("Tariff.NotFound", "No active tariff configured for the selected bus classification.");
 
     public static Error InvalidRatePerKm =>
         Error.Validation("Tariff.InvalidRate", "Rate per km must be greater than zero.");

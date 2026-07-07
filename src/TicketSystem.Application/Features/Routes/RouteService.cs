@@ -6,6 +6,7 @@ using TicketSystem.Application.Abstractions.Persistence;
 using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Features.Auth;
 using TicketSystem.Application.Features.Schedules;
+using TicketSystem.Application.Features.Tariffs;
 using TicketSystem.Application.Errors;
 using TicketSystem.Contracts.Routes;
 using TicketSystem.Contracts.Schedules;
@@ -272,15 +273,7 @@ public sealed class RouteService(IApplicationDbContext db, IBusinessClock clock)
         DateOnly date,
         CancellationToken cancellationToken)
     {
-        var tariff = await db.Tariffs.AsNoTracking().SingleOrDefaultAsync(x => x.IsActive, cancellationToken);
-        if (tariff is null)
-        {
-            return DomainErrors.TariffNotFound;
-        }
-
         var (dayStart, dayEnd) = clock.GetUtcRangeForLocalDate(date);
-        var ticketPrice = route.DistanceKm * tariff.RatePerKm;
-
         var schedules = await db.Schedules.AsNoTracking()
             .Include(x => x.Bus)
             .Where(x => x.RouteId == route.Id
@@ -315,14 +308,25 @@ public sealed class RouteService(IApplicationDbContext db, IBusinessClock clock)
             .GroupBy(x => x.ScheduleId)
             .ToDictionary(x => x.Key, x => x.Select(y => y.SeatNumber).ToHashSet());
 
-        var seatMaps = schedules.Select(schedule =>
+        var seatMaps = new List<RouteScheduleSeatMapResponse>();
+        foreach (var schedule in schedules)
         {
             soldBySchedule.TryGetValue(schedule.Id, out var soldSet);
             soldSet ??= [];
 
             var summary = SeatMapBuilder.Build(schedule.Bus.SeatCount, soldSet);
+            var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
+                db,
+                schedule.Bus.BusLevelId,
+                schedule.Bus.BusTypeId,
+                cancellationToken);
+            if (tariffResult.IsError)
+            {
+                return tariffResult.Errors;
+            }
+            var ticketPrice = route.DistanceKm * tariffResult.Value.RatePerKm;
 
-            return new RouteScheduleSeatMapResponse(
+            seatMaps.Add(new RouteScheduleSeatMapResponse(
                 schedule.Id,
                 schedule.BusId,
                 schedule.Bus.PlateNumber,
@@ -334,8 +338,8 @@ public sealed class RouteService(IApplicationDbContext db, IBusinessClock clock)
                 summary.AvailableSeatCount,
                 summary.IsFullySold,
                 ticketPrice,
-                summary.Seats);
-        }).ToList();
+                summary.Seats));
+        }
 
         return new RouteSeatMapsResponse(
             route.Id,

@@ -12,7 +12,7 @@ public sealed class TariffsController(ITariffService tariffService) : Controller
 {
     [Authorize(Roles = "Admin,Ticketer")]
     [HttpGet("active")]
-    public async Task<ActionResult<TariffResponse>> GetActive(CancellationToken cancellationToken)
+    public async Task<ActionResult<IReadOnlyList<TariffResponse>>> GetActive(CancellationToken cancellationToken)
     {
         var result = await tariffService.GetActiveAsync(cancellationToken);
         return result.ToActionResult();

@@ -10,17 +10,25 @@ using TicketSystem.Domain.Entities;
 
 public interface ITariffService
 {
-    Task<ErrorOr<TariffResponse>> GetActiveAsync(CancellationToken cancellationToken = default);
+    Task<ErrorOr<IReadOnlyList<TariffResponse>>> GetActiveAsync(CancellationToken cancellationToken = default);
     Task<ErrorOr<TariffResponse>> SetActiveAsync(SetTariffRequest request, CancellationToken cancellationToken = default);
     Task<ErrorOr<IReadOnlyList<TariffResponse>>> GetHistoryAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class TariffService(IApplicationDbContext db, IBusinessClock clock) : ITariffService
 {
-    public async Task<ErrorOr<TariffResponse>> GetActiveAsync(CancellationToken cancellationToken = default)
+    public async Task<ErrorOr<IReadOnlyList<TariffResponse>>> GetActiveAsync(CancellationToken cancellationToken = default)
     {
-        var tariff = await db.Tariffs.AsNoTracking().SingleOrDefaultAsync(x => x.IsActive, cancellationToken);
-        return tariff is null ? DomainErrors.TariffNotFound : Map(tariff);
+        var tariffs = await QueryTariffs()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.BusLevel.Rank)
+            .ThenBy(x => x.BusType.Name)
+            .ThenByDescending(x => x.EffectiveFrom)
+            .ToListAsync(cancellationToken);
+
+        return tariffs.Count == 0
+            ? DomainErrors.TariffNotFound
+            : tariffs.Select(Map).ToList();
     }
 
     public async Task<ErrorOr<TariffResponse>> SetActiveAsync(SetTariffRequest request, CancellationToken cancellationToken = default)
@@ -30,8 +38,26 @@ public sealed class TariffService(IApplicationDbContext db, IBusinessClock clock
             return DomainErrors.InvalidRatePerKm;
         }
 
+        var busLevel = await db.BusLevels
+            .SingleOrDefaultAsync(x => x.Id == request.BusLevelId && x.IsActive, cancellationToken);
+        if (busLevel is null)
+        {
+            return DomainErrors.BusLevelNotFound;
+        }
+
+        var busType = await db.BusTypes
+            .SingleOrDefaultAsync(x => x.Id == request.BusTypeId && x.IsActive, cancellationToken);
+        if (busType is null)
+        {
+            return DomainErrors.BusTypeNotFound;
+        }
+
         var now = clock.UtcNow;
-        var current = await db.Tariffs.SingleOrDefaultAsync(x => x.IsActive, cancellationToken);
+        var current = await db.Tariffs.SingleOrDefaultAsync(
+            x => x.IsActive
+                 && x.BusLevelId == request.BusLevelId
+                 && x.BusTypeId == request.BusTypeId,
+            cancellationToken);
         if (current is not null)
         {
             current.IsActive = false;
@@ -41,10 +67,14 @@ public sealed class TariffService(IApplicationDbContext db, IBusinessClock clock
         var tariff = new Tariff
         {
             Id = Guid.NewGuid(),
+            BusLevelId = busLevel.Id,
+            BusTypeId = busType.Id,
             RatePerKm = request.RatePerKm,
             Currency = "ETB",
             IsActive = true,
-            EffectiveFrom = now
+            EffectiveFrom = now,
+            BusLevel = busLevel,
+            BusType = busType
         };
 
         db.Tariffs.Add(tariff);
@@ -54,15 +84,29 @@ public sealed class TariffService(IApplicationDbContext db, IBusinessClock clock
 
     public async Task<ErrorOr<IReadOnlyList<TariffResponse>>> GetHistoryAsync(CancellationToken cancellationToken = default)
     {
-        var tariffs = await db.Tariffs.AsNoTracking()
+        var tariffs = await QueryTariffs()
             .OrderByDescending(x => x.EffectiveFrom)
             .ToListAsync(cancellationToken);
         return tariffs.Select(x => Map(x)).ToList();
     }
 
+    private IQueryable<Tariff> QueryTariffs() =>
+        db.Tariffs.AsNoTracking()
+            .Include(x => x.BusLevel)
+            .Include(x => x.BusType);
+
     private TariffResponse Map(Tariff tariff) =>
         new(
             tariff.Id,
+            new TariffBusLevelResponse(
+                tariff.BusLevel.Id,
+                tariff.BusLevel.Code,
+                tariff.BusLevel.Name,
+                tariff.BusLevel.Rank),
+            new TariffBusTypeResponse(
+                tariff.BusType.Id,
+                tariff.BusType.Code,
+                tariff.BusType.Name),
             tariff.RatePerKm,
             tariff.Currency,
             tariff.IsActive,

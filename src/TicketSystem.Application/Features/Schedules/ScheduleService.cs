@@ -7,6 +7,7 @@ using TicketSystem.Application.Abstractions.Realtime;
 using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Errors;
 using TicketSystem.Application.Features.Auth;
+using TicketSystem.Application.Features.Tariffs;
 using TicketSystem.Contracts.Schedules;
 using TicketSystem.Domain.Entities;
 using TicketSystem.Domain.Enums;
@@ -256,12 +257,17 @@ public sealed class ScheduleService(
             return DomainErrors.ScheduleCancelled;
         }
 
-        var tariff = await db.Tariffs.AsNoTracking().SingleOrDefaultAsync(x => x.IsActive, cancellationToken);
-        if (tariff is null)
+        var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
+            db,
+            schedule.Bus.BusLevelId,
+            schedule.Bus.BusTypeId,
+            cancellationToken);
+        if (tariffResult.IsError)
         {
-            return DomainErrors.TariffNotFound;
+            return tariffResult.Errors;
         }
 
+        var tariff = tariffResult.Value;
         var soldSeats = await db.Tickets.AsNoTracking()
             .Where(x => x.ScheduleId == scheduleId)
             .Select(x => x.SeatNumber)
@@ -354,12 +360,17 @@ public sealed class ScheduleService(
             return DomainErrors.ScheduleNotFound;
         }
 
-        var tariff = await db.Tariffs.AsNoTracking().SingleOrDefaultAsync(x => x.IsActive, cancellationToken);
-        if (tariff is null)
+        var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
+            db,
+            schedule.Bus.BusLevelId,
+            schedule.Bus.BusTypeId,
+            cancellationToken);
+        if (tariffResult.IsError)
         {
-            return DomainErrors.TariffNotFound;
+            return tariffResult.Errors;
         }
 
+        var tariff = tariffResult.Value;
         var soldCount = await db.Tickets.CountAsync(x => x.ScheduleId == scheduleId, cancellationToken);
         var ticketPrice = schedule.Route.DistanceKm * tariff.RatePerKm;
 

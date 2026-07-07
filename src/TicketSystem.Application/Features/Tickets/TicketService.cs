@@ -10,6 +10,7 @@ using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Errors;
 using TicketSystem.Application.Features.SalesParties;
 using TicketSystem.Application.Features.Schedules;
+using TicketSystem.Application.Features.Tariffs;
 using TicketSystem.Contracts.SalesParties;
 using TicketSystem.Contracts.Tickets;
 using TicketSystem.Domain.Entities;
@@ -93,12 +94,17 @@ public sealed class TicketService(
             return DomainErrors.SeatAlreadySold;
         }
 
-        var tariff = await db.Tariffs.SingleOrDefaultAsync(x => x.IsActive, cancellationToken);
-        if (tariff is null)
+        var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
+            db,
+            schedule.Bus.BusLevelId,
+            schedule.Bus.BusTypeId,
+            cancellationToken);
+        if (tariffResult.IsError)
         {
-            return DomainErrors.TariffNotFound;
+            return tariffResult.Errors;
         }
 
+        var tariff = tariffResult.Value;
         var price = schedule.Route.DistanceKm * tariff.RatePerKm;
 
         var ticket = new Ticket

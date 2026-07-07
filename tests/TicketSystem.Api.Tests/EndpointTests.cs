@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using TicketSystem.Contracts.Cities;
 using TicketSystem.Contracts.Auth;
 using TicketSystem.Contracts.Buses;
@@ -10,6 +12,7 @@ using TicketSystem.Contracts.Settings;
 using TicketSystem.Contracts.Tariffs;
 using TicketSystem.Contracts.Tickets;
 using TicketSystem.Contracts.Users;
+using TicketSystem.Infrastructure.Persistence;
 
 namespace TicketSystem.Api.Tests;
 
@@ -423,31 +426,37 @@ public sealed class RouteEndpointsTests(TicketSystemWebApplicationFactory factor
 public sealed class TariffEndpointsTests(TicketSystemWebApplicationFactory factory) : EndpointTestBase(factory)
 {
     [Fact]
-    public async Task GetActiveTariff_ReturnsSeededTariff()
+    public async Task GetActiveTariff_ReturnsSeededTariffRules()
     {
         var client = TicketerClient();
         var response = await client.GetAsync("/api/tariffs/active");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<TariffResponse>();
-        body!.RatePerKm.Should().Be(2.50m);
-        body.Currency.Should().Be("ETB");
+        var body = await response.Content.ReadFromJsonAsync<List<TariffResponse>>();
+        body.Should().NotBeEmpty();
+        body!.Should().OnlyContain(x => x.RatePerKm == 2.50m && x.Currency == "ETB" && x.IsActive);
     }
 
     [Fact]
-    public async Task SetActiveTariff_AsAdmin_UpdatesRate()
+    public async Task SetActiveTariff_AsAdmin_UpdatesRateForClassification()
     {
         var client = AdminClient();
-        var response = await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(3.00m));
+        var busLevelId = await GetBusLevelIdAsync("L1");
+        var busTypeId = await GetBusTypeIdAsync("regular");
+        var response = await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(busLevelId, busTypeId, 3.00m));
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<TariffResponse>();
         body!.RatePerKm.Should().Be(3.00m);
+        body.BusLevel.Code.Should().Be("L1");
+        body.BusType.Code.Should().Be("regular");
     }
 
     [Fact]
     public async Task GetTariffHistory_ReturnsEntries()
     {
         var client = AdminClient();
-        await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(3.25m));
+        var busLevelId = await GetBusLevelIdAsync("L1");
+        var busTypeId = await GetBusTypeIdAsync("regular");
+        await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(busLevelId, busTypeId, 3.25m));
         var response = await client.GetAsync("/api/tariffs/history");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<List<TariffResponse>>();
@@ -458,7 +467,9 @@ public sealed class TariffEndpointsTests(TicketSystemWebApplicationFactory facto
     public async Task SetActiveTariff_AsTicketer_ReturnsForbidden()
     {
         var client = TicketerClient();
-        var response = await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(4.00m));
+        var busLevelId = await GetBusLevelIdAsync("L1");
+        var busTypeId = await GetBusTypeIdAsync("regular");
+        var response = await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(busLevelId, busTypeId, 4.00m));
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 }
@@ -505,6 +516,27 @@ public sealed class ScheduleEndpointsTests(TicketSystemWebApplicationFactory fac
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<List<ScheduleResponse>>();
         body!.Single().AvailableSeatCount.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task GetAvailableSchedules_UsesTariffForBusClassification()
+    {
+        var busLevelId = await GetBusLevelIdAsync("L2");
+        var busTypeId = await GetBusTypeIdAsync("special");
+        var client = AdminClient();
+        await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(busLevelId, busTypeId, 5.00m));
+
+        var (routeId, busId) = await SeedRouteAndBusAsync("AA-20021", to: "Jimma", busLevelId: busLevelId, busTypeId: busTypeId);
+        var departure = AddisTestTimes.TodayAt(8);
+        await client.PostAsJsonAsync("/api/schedules", new CreateScheduleRequest(routeId, busId, departure, 1));
+
+        var response = await TicketerClient().GetAsync(
+            $"/api/schedules/available?routeId={routeId}&date={AddisTestTimes.DateOf(departure):yyyy-MM-dd}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<List<ScheduleResponse>>();
+        body!.Single().RatePerKm.Should().Be(5.00m);
+        body.Single().TicketPrice.Should().Be(346 * 5.00m);
     }
 
     [Fact]
@@ -823,7 +855,9 @@ public abstract class EndpointTestBase : IAsyncLifetime
     protected async Task<(Guid RouteId, Guid BusId)> SeedRouteAndBusAsync(
         string plate = "AA-10001",
         string to = "Jimma",
-        int seats = 45)
+        int seats = 45,
+        Guid? busLevelId = null,
+        Guid? busTypeId = null)
     {
         var client = AdminClient();
         await EnsureCityAsync("Addis Ababa");
@@ -832,7 +866,7 @@ public abstract class EndpointTestBase : IAsyncLifetime
         var route = await routeResponse.Content.ReadFromJsonAsync<RouteResponse>();
         var side = plate.Replace("AA-", "S-");
         var busResponse = await client.PostAsJsonAsync("/api/buses",
-            new CreateBusRequest("Owner", "0911000000", "0911000001", side, plate, seats));
+            new CreateBusRequest("Owner", "0911000000", "0911000001", side, plate, seats, null, busLevelId, busTypeId));
         var bus = await busResponse.Content.ReadFromJsonAsync<BusResponse>();
         return (route!.Id, bus!.Id);
     }
@@ -858,6 +892,26 @@ public abstract class EndpointTestBase : IAsyncLifetime
         return cityName.Equals("Addis Ababa", StringComparison.OrdinalIgnoreCase)
             ? route!.FromStation.Id
             : route!.ToStation.Id;
+    }
+
+    protected async Task<Guid> GetBusLevelIdAsync(string code)
+    {
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TicketSystemDbContext>();
+        return await db.BusLevels
+            .Where(x => x.Code == code)
+            .Select(x => x.Id)
+            .SingleAsync();
+    }
+
+    protected async Task<Guid> GetBusTypeIdAsync(string code)
+    {
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TicketSystemDbContext>();
+        return await db.BusTypes
+            .Where(x => x.Code == code)
+            .Select(x => x.Id)
+            .SingleAsync();
     }
 
     public Task InitializeAsync() => Factory.ResetDatabaseAsync();
