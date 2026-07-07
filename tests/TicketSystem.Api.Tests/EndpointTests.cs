@@ -621,6 +621,59 @@ public sealed class ScheduleEndpointsTests(TicketSystemWebApplicationFactory fac
             new CreateScheduleRequest(route2Body!.Id, busId, departure.AddHours(2), 1));
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
+
+    [Fact]
+    public async Task CreateSchedule_DifferentOptionsSameSequenceOnSameRouteDay_Succeeds()
+    {
+        var client = AdminClient();
+        await EnsureCityAsync("Addis Ababa");
+        var toCityId = await EnsureCityAsync("Jimma");
+        var routeId = (await (await client.PostAsJsonAsync("/api/routes", new CreateRouteRequest(toCityId)))
+            .Content.ReadFromJsonAsync<RouteResponse>())!.Id;
+
+        var busLevelL2 = await GetBusLevelIdAsync("L2");
+        var busTypeSpecial = await GetBusTypeIdAsync("special");
+
+        var bus1 = await client.PostAsJsonAsync("/api/buses",
+            new CreateBusRequest("Owner 1", "0911000101", "0911000102", "S-20022", "AA-20022", 45, null, null, null));
+        var bus2 = await client.PostAsJsonAsync("/api/buses",
+            new CreateBusRequest("Owner 2", "0911000201", "0911000202", "S-20023", "AA-20023", 45, null, busLevelL2, busTypeSpecial));
+        var busId1 = (await bus1.Content.ReadFromJsonAsync<BusResponse>())!.Id;
+        var busId2 = (await bus2.Content.ReadFromJsonAsync<BusResponse>())!.Id;
+
+        var departure = AddisTestTimes.TodayAt(12);
+        var first = await client.PostAsJsonAsync("/api/schedules",
+            new CreateScheduleRequest(routeId, busId1, departure, 1));
+        var second = await client.PostAsJsonAsync("/api/schedules",
+            new CreateScheduleRequest(routeId, busId2, departure.AddHours(1), 1));
+
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+        second.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task CreateSchedule_SameOptionSameSequenceOnSameRouteDay_ReturnsConflict()
+    {
+        var client = AdminClient();
+        await EnsureCityAsync("Addis Ababa");
+        var toCityId = await EnsureCityAsync("Jimma");
+        var routeId = (await (await client.PostAsJsonAsync("/api/routes", new CreateRouteRequest(toCityId)))
+            .Content.ReadFromJsonAsync<RouteResponse>())!.Id;
+
+        var bus1 = await client.PostAsJsonAsync("/api/buses",
+            new CreateBusRequest("Owner 1", "0911000301", "0911000302", "S-20024", "AA-20024", 45, null, null, null));
+        var bus2 = await client.PostAsJsonAsync("/api/buses",
+            new CreateBusRequest("Owner 2", "0911000401", "0911000402", "S-20025", "AA-20025", 45, null, null, null));
+        var busId1 = (await bus1.Content.ReadFromJsonAsync<BusResponse>())!.Id;
+        var busId2 = (await bus2.Content.ReadFromJsonAsync<BusResponse>())!.Id;
+
+        var departure = AddisTestTimes.TodayAt(13);
+        await client.PostAsJsonAsync("/api/schedules", new CreateScheduleRequest(routeId, busId1, departure, 1));
+        var response = await client.PostAsJsonAsync("/api/schedules",
+            new CreateScheduleRequest(routeId, busId2, departure.AddHours(1), 1));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
 }
 
 [Collection("Api")]
