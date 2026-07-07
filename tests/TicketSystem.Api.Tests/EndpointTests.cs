@@ -8,6 +8,7 @@ using TicketSystem.Contracts.Auth;
 using TicketSystem.Contracts.Buses;
 using TicketSystem.Contracts.Routes;
 using TicketSystem.Contracts.Schedules;
+using TicketSystem.Contracts.SellingOptions;
 using TicketSystem.Contracts.Settings;
 using TicketSystem.Contracts.Tariffs;
 using TicketSystem.Contracts.Tickets;
@@ -673,6 +674,119 @@ public sealed class ScheduleEndpointsTests(TicketSystemWebApplicationFactory fac
             new CreateScheduleRequest(routeId, busId2, departure.AddHours(1), 1));
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+}
+
+[Collection("Api")]
+public sealed class SellingOptionEndpointsTests(TicketSystemWebApplicationFactory factory) : EndpointTestBase(factory)
+{
+    [Fact]
+    public async Task SearchSellingOptions_ReturnsGroupedOptionSummary()
+    {
+        var (_, busId) = await SeedRouteAndBusAsync("AA-40001", to: "Jimma");
+        var jimmaCityId = await EnsureCityAsync("Jimma");
+        var admin = AdminClient();
+        var departure = AddisTestTimes.TodayAt(6);
+        var routeId = (await (await admin.GetAsync($"/api/routes?toCityId={jimmaCityId}"))
+            .Content.ReadFromJsonAsync<List<RouteResponse>>())!.Single().Id;
+        await admin.PostAsJsonAsync("/api/schedules", new CreateScheduleRequest(routeId, busId, departure, 1));
+
+        var response = await TicketerClient().GetAsync(
+            $"/api/selling-options/search?toCityId={jimmaCityId}&date={AddisTestTimes.DateOf(departure):yyyy-MM-dd}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<List<SellingOptionSummaryResponse>>();
+        body.Should().ContainSingle();
+        body![0].ToCity.Should().Be("Jimma");
+        body[0].BusLevel.Code.Should().Be("L1");
+        body[0].BusType.Code.Should().Be("regular");
+        body[0].RatePerKm.Should().Be(2.50m);
+        body[0].TicketPrice.Should().Be(346 * 2.50m);
+        body[0].AvailableBusCount.Should().Be(1);
+        body[0].AvailableSeatCount.Should().Be(45);
+    }
+
+    [Fact]
+    public async Task SearchSellingOptions_ReturnsSeparateOptionsForDifferentClassifications()
+    {
+        var client = AdminClient();
+        await EnsureCityAsync("Addis Ababa");
+        var jimmaCityId = await EnsureCityAsync("Jimma");
+        var routeId = (await (await client.PostAsJsonAsync("/api/routes", new CreateRouteRequest(jimmaCityId)))
+            .Content.ReadFromJsonAsync<RouteResponse>())!.Id;
+
+        var busLevelL2 = await GetBusLevelIdAsync("L2");
+        var busTypeSpecial = await GetBusTypeIdAsync("special");
+        await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(busLevelL2, busTypeSpecial, 5.00m));
+
+        var bus1 = await client.PostAsJsonAsync("/api/buses",
+            new CreateBusRequest("Owner 1", "0911000501", "0911000502", "S-40002", "AA-40002", 45, null, null, null));
+        var bus2 = await client.PostAsJsonAsync("/api/buses",
+            new CreateBusRequest("Owner 2", "0911000601", "0911000602", "S-40003", "AA-40003", 45, null, busLevelL2, busTypeSpecial));
+        var busId1 = (await bus1.Content.ReadFromJsonAsync<BusResponse>())!.Id;
+        var busId2 = (await bus2.Content.ReadFromJsonAsync<BusResponse>())!.Id;
+
+        var departure = AddisTestTimes.TodayAt(7);
+        await client.PostAsJsonAsync("/api/schedules", new CreateScheduleRequest(routeId, busId1, departure, 1));
+        await client.PostAsJsonAsync("/api/schedules", new CreateScheduleRequest(routeId, busId2, departure.AddHours(1), 1));
+
+        var response = await TicketerClient().GetAsync(
+            $"/api/selling-options/search?toCityId={jimmaCityId}&date={AddisTestTimes.DateOf(departure):yyyy-MM-dd}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<List<SellingOptionSummaryResponse>>();
+        body.Should().HaveCount(2);
+        body!.Should().Contain(x => x.BusLevel.Code == "L1" && x.BusType.Code == "regular" && x.RatePerKm == 2.50m);
+        body.Should().Contain(x => x.BusLevel.Code == "L2" && x.BusType.Code == "special" && x.RatePerKm == 5.00m);
+    }
+
+    [Fact]
+    public async Task GetSellingOptionSchedules_ReturnsSchedulesInsideOptionOnly()
+    {
+        var client = AdminClient();
+        await EnsureCityAsync("Addis Ababa");
+        var jimmaCityId = await EnsureCityAsync("Jimma");
+        var routeId = (await (await client.PostAsJsonAsync("/api/routes", new CreateRouteRequest(jimmaCityId)))
+            .Content.ReadFromJsonAsync<RouteResponse>())!.Id;
+
+        var busLevelL2 = await GetBusLevelIdAsync("L2");
+        var busTypeSpecial = await GetBusTypeIdAsync("special");
+
+        var bus1 = await client.PostAsJsonAsync("/api/buses",
+            new CreateBusRequest("Owner 1", "0911000701", "0911000702", "S-40004", "AA-40004", 45, null, null, null));
+        var bus2 = await client.PostAsJsonAsync("/api/buses",
+            new CreateBusRequest("Owner 2", "0911000801", "0911000802", "S-40005", "AA-40005", 45, null, busLevelL2, busTypeSpecial));
+        var busId1 = (await bus1.Content.ReadFromJsonAsync<BusResponse>())!.Id;
+        var busId2 = (await bus2.Content.ReadFromJsonAsync<BusResponse>())!.Id;
+
+        var departure = AddisTestTimes.TodayAt(8);
+        await client.PostAsJsonAsync("/api/schedules", new CreateScheduleRequest(routeId, busId1, departure, 1));
+        await client.PostAsJsonAsync("/api/schedules", new CreateScheduleRequest(routeId, busId2, departure.AddHours(1), 1));
+
+        var search = await TicketerClient().GetAsync(
+            $"/api/selling-options/search?toCityId={jimmaCityId}&date={AddisTestTimes.DateOf(departure):yyyy-MM-dd}");
+        var options = await search.Content.ReadFromJsonAsync<List<SellingOptionSummaryResponse>>();
+        var l2Option = options!.Single(x => x.BusLevel.Code == "L2");
+
+        var response = await TicketerClient().GetAsync(
+            $"/api/selling-options/{Uri.EscapeDataString(l2Option.OptionKey)}/schedules");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var schedules = await response.Content.ReadFromJsonAsync<List<SellingOptionScheduleResponse>>();
+        schedules.Should().ContainSingle();
+        schedules![0].PlateNumber.Should().Be("AA-40005");
+        schedules[0].AvailableSeatCount.Should().Be(45);
+    }
+
+    [Fact]
+    public async Task SearchSellingOptions_WithForbiddenFromStationId_AsTicketer_ReturnsBadRequest()
+    {
+        await SeedRouteAndBusAsync("AA-40006", to: "Jimma");
+        var jimmaCityId = await EnsureCityAsync("Jimma");
+        var adamaStationId = await GetDefaultStationIdForCityAsync("Adama");
+        var response = await TicketerClient().GetAsync(
+            $"/api/selling-options/search?toCityId={jimmaCityId}&date={AddisTestTimes.DateOf(AddisTestTimes.TodayAt(6)):yyyy-MM-dd}&fromStationId={adamaStationId}");
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }
 

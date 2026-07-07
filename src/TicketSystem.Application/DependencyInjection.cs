@@ -7,6 +7,7 @@ using TicketSystem.Application.Features.Buses;
 using TicketSystem.Application.Features.Routes;
 using TicketSystem.Application.Features.SalesParties;
 using TicketSystem.Application.Features.Schedules;
+using TicketSystem.Application.Features.SellingOptions;
 using TicketSystem.Application.Features.Settings;
 using TicketSystem.Application.Features.Tariffs;
 using TicketSystem.Application.Features.Reports;
@@ -22,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<IRouteService, RouteService>();
         services.AddScoped<ITariffService, TariffService>();
         services.AddScoped<IScheduleService, ScheduleService>();
+        services.AddScoped<ISellingOptionService, SellingOptionService>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<ISalesPartyService, SalesPartyService>();
         services.AddScoped<ICashInventoryService, CashInventoryService>();
