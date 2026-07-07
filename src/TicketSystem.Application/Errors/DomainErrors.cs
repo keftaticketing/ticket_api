@@ -108,6 +108,9 @@ public static class DomainErrors
             "Schedule.DuplicateSequence",
             "Sequence number already used for this route, day, and selling option.");
 
+    public static Error InvalidSellingOptionKey =>
+        Error.Validation("SellingOption.InvalidKey", "The selling option key is invalid.");
+
     public static Error BusInactive =>
         Error.NotFound("Bus.Inactive", "Bus not found or inactive.");
 
