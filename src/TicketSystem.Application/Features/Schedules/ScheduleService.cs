@@ -6,6 +6,7 @@ using TicketSystem.Application.Abstractions.Persistence;
 using TicketSystem.Application.Abstractions.Realtime;
 using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Errors;
+using TicketSystem.Application.Features.Auth;
 using TicketSystem.Contracts.Schedules;
 using TicketSystem.Domain.Entities;
 using TicketSystem.Domain.Enums;
@@ -13,11 +14,26 @@ using TicketSystem.Domain.Enums;
 public interface IScheduleService
 {
     Task<ErrorOr<ScheduleResponse>> CreateAsync(CreateScheduleRequest request, CancellationToken cancellationToken = default);
-    Task<ErrorOr<IReadOnlyList<ScheduleResponse>>> GetAllAsync(Guid? routeId, DateOnly? date, CancellationToken cancellationToken = default);
-    Task<ErrorOr<IReadOnlyList<ScheduleResponse>>> GetAvailableAsync(Guid routeId, DateOnly date, CancellationToken cancellationToken = default);
+    Task<ErrorOr<IReadOnlyList<ScheduleResponse>>> GetAllAsync(
+        Guid? routeId,
+        DateOnly? date,
+        Guid? scopedFromStationId = null,
+        CancellationToken cancellationToken = default);
+    Task<ErrorOr<IReadOnlyList<ScheduleResponse>>> GetAvailableAsync(
+        Guid routeId,
+        DateOnly date,
+        Guid? scopedFromStationId = null,
+        CancellationToken cancellationToken = default);
     Task<ErrorOr<ScheduleResponse>> UpdateAsync(Guid id, UpdateScheduleRequest request, CancellationToken cancellationToken = default);
-    Task<ErrorOr<SeatMapResponse>> GetSeatMapAsync(Guid scheduleId, CancellationToken cancellationToken = default);
-    Task<ErrorOr<SeatStatusResponse>> GetSeatStatusAsync(Guid scheduleId, int seatNumber, CancellationToken cancellationToken = default);
+    Task<ErrorOr<SeatMapResponse>> GetSeatMapAsync(
+        Guid scheduleId,
+        Guid? scopedFromStationId = null,
+        CancellationToken cancellationToken = default);
+    Task<ErrorOr<SeatStatusResponse>> GetSeatStatusAsync(
+        Guid scheduleId,
+        int seatNumber,
+        Guid? scopedFromStationId = null,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class ScheduleService(
@@ -86,13 +102,19 @@ public sealed class ScheduleService(
     public async Task<ErrorOr<IReadOnlyList<ScheduleResponse>>> GetAllAsync(
         Guid? routeId,
         DateOnly? date,
+        Guid? scopedFromStationId = null,
         CancellationToken cancellationToken = default)
     {
-        var query = db.Schedules.AsNoTracking().AsQueryable();
+        var query = db.Schedules.AsNoTracking().Include(x => x.Route).AsQueryable();
 
         if (routeId.HasValue)
         {
             query = query.Where(x => x.RouteId == routeId.Value);
+        }
+
+        if (scopedFromStationId is Guid fromStationId)
+        {
+            query = query.Where(x => x.Route.FromStationId == fromStationId);
         }
 
         if (date.HasValue)
@@ -111,8 +133,22 @@ public sealed class ScheduleService(
     public async Task<ErrorOr<IReadOnlyList<ScheduleResponse>>> GetAvailableAsync(
         Guid routeId,
         DateOnly date,
+        Guid? scopedFromStationId = null,
         CancellationToken cancellationToken = default)
     {
+        var route = await db.Routes.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == routeId && x.IsActive, cancellationToken);
+        if (route is null)
+        {
+            return DomainErrors.RouteInactive;
+        }
+
+        var scopeResult = TicketerSellingScope.EnsureRouteOriginMatches(route.FromStationId, scopedFromStationId);
+        if (scopeResult.IsError)
+        {
+            return scopeResult.Errors;
+        }
+
         var (dayStart, dayEnd) = clock.GetUtcRangeForLocalDate(date);
 
         var ids = await db.Schedules.AsNoTracking()
@@ -192,7 +228,10 @@ public sealed class ScheduleService(
         return await MapScheduleAsync(schedule.Id, cancellationToken);
     }
 
-    public async Task<ErrorOr<SeatMapResponse>> GetSeatMapAsync(Guid scheduleId, CancellationToken cancellationToken = default)
+    public async Task<ErrorOr<SeatMapResponse>> GetSeatMapAsync(
+        Guid scheduleId,
+        Guid? scopedFromStationId = null,
+        CancellationToken cancellationToken = default)
     {
         var schedule = await db.Schedules.AsNoTracking()
             .Include(x => x.Bus)
@@ -202,6 +241,14 @@ public sealed class ScheduleService(
         if (schedule is null)
         {
             return DomainErrors.ScheduleNotFound;
+        }
+
+        var scopeResult = TicketerSellingScope.EnsureRouteOriginMatches(
+            schedule.Route.FromStationId,
+            scopedFromStationId);
+        if (scopeResult.IsError)
+        {
+            return scopeResult.Errors;
         }
 
         if (schedule.Status == ScheduleStatus.Cancelled)
@@ -236,15 +283,25 @@ public sealed class ScheduleService(
     public async Task<ErrorOr<SeatStatusResponse>> GetSeatStatusAsync(
         Guid scheduleId,
         int seatNumber,
+        Guid? scopedFromStationId = null,
         CancellationToken cancellationToken = default)
     {
         var schedule = await db.Schedules.AsNoTracking()
             .Include(x => x.Bus)
+            .Include(x => x.Route)
             .SingleOrDefaultAsync(x => x.Id == scheduleId, cancellationToken);
 
         if (schedule is null)
         {
             return DomainErrors.ScheduleNotFound;
+        }
+
+        var scopeResult = TicketerSellingScope.EnsureRouteOriginMatches(
+            schedule.Route.FromStationId,
+            scopedFromStationId);
+        if (scopeResult.IsError)
+        {
+            return scopeResult.Errors;
         }
 
         if (schedule.Status == ScheduleStatus.Cancelled)

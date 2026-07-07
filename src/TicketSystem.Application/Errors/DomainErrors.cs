@@ -139,6 +139,9 @@ public static class DomainErrors
     public static Error ScheduleOriginStationMismatch =>
         Error.Validation("Ticket.ScheduleOriginStationMismatch", "Tickets can only be sold for schedules departing from the ticketer's assigned station.");
 
+    public static Error FromStationScopeMismatch =>
+        Error.Validation("Station.FromStationScopeMismatch", "The requested origin station is outside the ticketer's selling scope.");
+
     public static Error CityNotFound =>
         Error.NotFound("City.NotFound", "City not found.");
 

@@ -3,12 +3,15 @@ namespace TicketSystem.Api.Controllers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TicketSystem.Api.Extensions;
+using TicketSystem.Application.Abstractions.Authentication;
 using TicketSystem.Application.Features.Schedules;
 using TicketSystem.Contracts.Schedules;
 
 [ApiController]
 [Route("api/schedules")]
-public sealed class SchedulesController(IScheduleService scheduleService) : ControllerBase
+public sealed class SchedulesController(
+    IScheduleService scheduleService,
+    IIdentityAccountService accountService) : ControllerBase
 {
     [Authorize(Roles = "Admin")]
     [HttpPost]
@@ -30,7 +33,13 @@ public sealed class SchedulesController(IScheduleService scheduleService) : Cont
         [FromQuery] DateOnly? date,
         CancellationToken cancellationToken)
     {
-        var result = await scheduleService.GetAllAsync(routeId, date, cancellationToken);
+        var scope = await User.ResolveFromStationFilterAsync(null, accountService, cancellationToken);
+        if (scope.IsError)
+        {
+            return scope.ToErrorActionResult<Guid?, IReadOnlyList<ScheduleResponse>>();
+        }
+
+        var result = await scheduleService.GetAllAsync(routeId, date, scope.Value, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -41,7 +50,13 @@ public sealed class SchedulesController(IScheduleService scheduleService) : Cont
         [FromQuery] DateOnly date,
         CancellationToken cancellationToken)
     {
-        var result = await scheduleService.GetAvailableAsync(routeId, date, cancellationToken);
+        var scope = await User.ResolveFromStationFilterAsync(null, accountService, cancellationToken);
+        if (scope.IsError)
+        {
+            return scope.ToErrorActionResult<Guid?, IReadOnlyList<ScheduleResponse>>();
+        }
+
+        var result = await scheduleService.GetAvailableAsync(routeId, date, scope.Value, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -57,7 +72,13 @@ public sealed class SchedulesController(IScheduleService scheduleService) : Cont
     [HttpGet("{id:guid}/seats")]
     public async Task<ActionResult<SeatMapResponse>> GetSeats(Guid id, CancellationToken cancellationToken)
     {
-        var result = await scheduleService.GetSeatMapAsync(id, cancellationToken);
+        var scope = await User.ResolveFromStationFilterAsync(null, accountService, cancellationToken);
+        if (scope.IsError)
+        {
+            return scope.ToErrorActionResult<Guid?, SeatMapResponse>();
+        }
+
+        var result = await scheduleService.GetSeatMapAsync(id, scope.Value, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -68,7 +89,13 @@ public sealed class SchedulesController(IScheduleService scheduleService) : Cont
         int seatNumber,
         CancellationToken cancellationToken)
     {
-        var result = await scheduleService.GetSeatStatusAsync(id, seatNumber, cancellationToken);
+        var scope = await User.ResolveFromStationFilterAsync(null, accountService, cancellationToken);
+        if (scope.IsError)
+        {
+            return scope.ToErrorActionResult<Guid?, SeatStatusResponse>();
+        }
+
+        var result = await scheduleService.GetSeatStatusAsync(id, seatNumber, scope.Value, cancellationToken);
         return result.ToActionResult();
     }
 }

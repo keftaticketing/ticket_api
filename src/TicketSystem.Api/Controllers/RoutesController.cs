@@ -3,6 +3,7 @@ namespace TicketSystem.Api.Controllers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TicketSystem.Api.Extensions;
+using TicketSystem.Application.Abstractions.Authentication;
 using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Common;
 using TicketSystem.Application.Features.Routes;
@@ -10,7 +11,10 @@ using TicketSystem.Contracts.Routes;
 
 [ApiController]
 [Route("api/routes")]
-public sealed class RoutesController(IRouteService routeService, IBusinessClock clock) : ControllerBase
+public sealed class RoutesController(
+    IRouteService routeService,
+    IIdentityAccountService accountService,
+    IBusinessClock clock) : ControllerBase
 {
     [Authorize(Roles = "Admin")]
     [HttpPost]
@@ -27,7 +31,13 @@ public sealed class RoutesController(IRouteService routeService, IBusinessClock 
         [FromQuery] Guid? fromStationId,
         CancellationToken cancellationToken)
     {
-        var result = await routeService.GetAllAsync(toCityId, fromStationId, cancellationToken);
+        var scope = await User.ResolveFromStationFilterAsync(fromStationId, accountService, cancellationToken);
+        if (scope.IsError)
+        {
+            return scope.ToErrorActionResult<Guid?, IReadOnlyList<RouteResponse>>();
+        }
+
+        var result = await routeService.GetAllAsync(toCityId, scope.Value, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -39,6 +49,12 @@ public sealed class RoutesController(IRouteService routeService, IBusinessClock 
         [FromQuery] Guid? fromStationId,
         CancellationToken cancellationToken)
     {
+        var scope = await User.ResolveFromStationFilterAsync(fromStationId, accountService, cancellationToken);
+        if (scope.IsError)
+        {
+            return scope.ToErrorActionResult<Guid?, RouteSeatMapsResponse>();
+        }
+
         var parsedDate = TravelDateParser.ParseLocalDate(date, clock);
         if (parsedDate.IsError)
         {
@@ -48,7 +64,7 @@ public sealed class RoutesController(IRouteService routeService, IBusinessClock 
         var result = await routeService.GetSeatMapsByDestinationAsync(
             destinationCityId,
             parsedDate.Value,
-            fromStationId,
+            scope.Value,
             cancellationToken);
         return result.ToActionResult();
     }
@@ -57,7 +73,13 @@ public sealed class RoutesController(IRouteService routeService, IBusinessClock 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<RouteResponse>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var result = await routeService.GetByIdAsync(id, cancellationToken);
+        var scope = await User.ResolveFromStationFilterAsync(null, accountService, cancellationToken);
+        if (scope.IsError)
+        {
+            return scope.ToErrorActionResult<Guid?, RouteResponse>();
+        }
+
+        var result = await routeService.GetByIdAsync(id, scope.Value, cancellationToken);
         return result.ToActionResult();
     }
 

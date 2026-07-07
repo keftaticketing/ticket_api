@@ -325,6 +325,15 @@ public sealed class RouteEndpointsTests(TicketSystemWebApplicationFactory factor
     }
 
     [Fact]
+    public async Task GetRoutes_WithForbiddenFromStationId_AsTicketer_ReturnsBadRequest()
+    {
+        await SeedRouteAndBusAsync(to: "Jimma");
+        var adamaStationId = await GetDefaultStationIdForCityAsync("Adama");
+        var response = await TicketerClient().GetAsync($"/api/routes?fromStationId={adamaStationId}");
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task GetRouteSeatMaps_ByDestination_AsTicketer_ReturnsSequencedBusSeats()
     {
         var (_, busId) = await SeedRouteAndBusAsync("AA-30001", to: "Jimma");
@@ -496,6 +505,28 @@ public sealed class ScheduleEndpointsTests(TicketSystemWebApplicationFactory fac
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<List<ScheduleResponse>>();
         body!.Single().AvailableSeatCount.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task GetAvailableSchedules_WhenRouteOutsideSellingScope_ReturnsBadRequest()
+    {
+        var (routeId, _) = await SeedRouteAndBusAsync("AA-20020", to: "Jimma");
+        var adamaStationId = await GetDefaultStationIdForCityAsync("Adama");
+        var admin = AdminClient();
+
+        await admin.PostAsJsonAsync(
+            $"/api/users/{TestDataSeeder.TicketerId}/station-assignments",
+            new CreateUserStationAssignmentRequest(adamaStationId));
+
+        var ticketer = TicketerClient();
+        await ticketer.PutAsJsonAsync(
+            "/api/auth/me/selected-station",
+            new SetSelectedStationRequest(adamaStationId));
+
+        var response = await ticketer.GetAsync(
+            $"/api/schedules/available?routeId={routeId}&date={AddisTestTimes.DateOf(AddisTestTimes.TodayAt(8)):yyyy-MM-dd}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
