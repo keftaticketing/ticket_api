@@ -104,7 +104,9 @@ public static class DomainErrors
         Error.Conflict("Schedule.BusAlreadyScheduled", "This bus already has a schedule on the selected day.");
 
     public static Error DuplicateSequence =>
-        Error.Conflict("Schedule.DuplicateSequence", "Sequence number already used for this route on the selected day.");
+        Error.Conflict(
+            "Schedule.DuplicateSequence",
+            "Sequence number already used for this route, day, and selling option.");
 
     public static Error BusInactive =>
         Error.NotFound("Bus.Inactive", "Bus not found or inactive.");

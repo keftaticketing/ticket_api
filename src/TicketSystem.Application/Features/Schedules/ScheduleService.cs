@@ -62,7 +62,8 @@ public sealed class ScheduleService(
         }
 
         var departureUtc = clock.ToUtcFromLocal(request.DepartureAt);
-        var (dayStart, dayEnd) = clock.GetUtcRangeForLocalDate(clock.ToLocalDate(departureUtc));
+        var departureDate = clock.ToLocalDate(departureUtc);
+        var (dayStart, dayEnd) = clock.GetUtcRangeForLocalDate(departureDate);
 
         if (await db.Schedules.AnyAsync(
                 x => x.BusId == request.BusId
@@ -76,8 +77,10 @@ public sealed class ScheduleService(
 
         if (await db.Schedules.AnyAsync(
                 x => x.RouteId == request.RouteId
-                     && x.DepartureAt >= dayStart
-                     && x.DepartureAt < dayEnd
+                     && x.DepartureDate == departureDate
+                     && x.AssociationId == bus.AssociationId
+                     && x.BusLevelId == bus.BusLevelId
+                     && x.BusTypeId == bus.BusTypeId
                      && x.SequenceNumber == request.SequenceNumber
                      && x.Status != ScheduleStatus.Cancelled,
                 cancellationToken))
@@ -93,6 +96,7 @@ public sealed class ScheduleService(
             DepartureAt = departureUtc,
             SequenceNumber = request.SequenceNumber
         };
+        ScheduleOptionOrdering.ApplyClassificationSnapshot(schedule, bus, departureDate);
 
         db.Schedules.Add(schedule);
         await db.SaveChangesAsync(cancellationToken);
@@ -120,11 +124,10 @@ public sealed class ScheduleService(
 
         if (date.HasValue)
         {
-            var (dayStart, dayEnd) = clock.GetUtcRangeForLocalDate(date.Value);
-            query = query.Where(x => x.DepartureAt >= dayStart && x.DepartureAt < dayEnd);
+            query = query.Where(x => x.DepartureDate == date.Value);
         }
 
-        var ids = await query.OrderBy(x => x.DepartureAt).ThenBy(x => x.SequenceNumber)
+        var ids = await query.OrderForOptionDisplay()
             .Select(x => x.Id)
             .ToListAsync(cancellationToken);
 
@@ -150,14 +153,11 @@ public sealed class ScheduleService(
             return scopeResult.Errors;
         }
 
-        var (dayStart, dayEnd) = clock.GetUtcRangeForLocalDate(date);
-
         var ids = await db.Schedules.AsNoTracking()
             .Where(x => x.RouteId == routeId
-                        && x.DepartureAt >= dayStart
-                        && x.DepartureAt < dayEnd
+                        && x.DepartureDate == date
                         && x.Status == ScheduleStatus.Scheduled)
-            .OrderBy(x => x.SequenceNumber)
+            .OrderForOptionDisplay()
             .Select(x => x.Id)
             .ToListAsync(cancellationToken);
 
@@ -186,7 +186,8 @@ public sealed class ScheduleService(
         }
 
         var departureUtc = clock.ToUtcFromLocal(request.DepartureAt);
-        var (dayStart, dayEnd) = clock.GetUtcRangeForLocalDate(clock.ToLocalDate(departureUtc));
+        var departureDate = clock.ToLocalDate(departureUtc);
+        var (dayStart, dayEnd) = clock.GetUtcRangeForLocalDate(departureDate);
 
         if (status != ScheduleStatus.Cancelled)
         {
@@ -204,8 +205,10 @@ public sealed class ScheduleService(
             if (await db.Schedules.AnyAsync(
                     x => x.Id != id
                          && x.RouteId == schedule.RouteId
-                         && x.DepartureAt >= dayStart
-                         && x.DepartureAt < dayEnd
+                         && x.DepartureDate == departureDate
+                         && x.AssociationId == schedule.AssociationId
+                         && x.BusLevelId == schedule.BusLevelId
+                         && x.BusTypeId == schedule.BusTypeId
                          && x.SequenceNumber == request.SequenceNumber
                          && x.Status != ScheduleStatus.Cancelled,
                     cancellationToken))
@@ -215,6 +218,7 @@ public sealed class ScheduleService(
         }
 
         schedule.DepartureAt = departureUtc;
+        schedule.DepartureDate = departureDate;
         schedule.SequenceNumber = request.SequenceNumber;
         schedule.Status = status;
 

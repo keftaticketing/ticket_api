@@ -273,15 +273,14 @@ public sealed class RouteService(IApplicationDbContext db, IBusinessClock clock)
         DateOnly date,
         CancellationToken cancellationToken)
     {
-        var (dayStart, dayEnd) = clock.GetUtcRangeForLocalDate(date);
         var schedules = await db.Schedules.AsNoTracking()
             .Include(x => x.Bus)
+            .Include(x => x.BusLevel)
+            .Include(x => x.BusType)
             .Where(x => x.RouteId == route.Id
-                        && x.DepartureAt >= dayStart
-                        && x.DepartureAt < dayEnd
+                        && x.DepartureDate == date
                         && (x.Status == ScheduleStatus.Scheduled || x.Status == ScheduleStatus.Boarding))
-            .OrderBy(x => x.SequenceNumber)
-            .ThenBy(x => x.DepartureAt)
+            .OrderForOptionDisplay()
             .ToListAsync(cancellationToken);
 
         if (schedules.Count == 0)
