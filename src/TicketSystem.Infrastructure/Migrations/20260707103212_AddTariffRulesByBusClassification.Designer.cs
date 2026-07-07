@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TicketSystem.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using TicketSystem.Infrastructure.Persistence;
 namespace TicketSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(TicketSystemDbContext))]
-    partial class TicketSystemDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260707103212_AddTariffRulesByBusClassification")]
+    partial class AddTariffRulesByBusClassification
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -32,23 +32,13 @@ public static class DatabaseSeeder
         await SeedAssociationsAsync(db, logger);
         await SeedBusLevelsAsync(db, logger);
         await SeedBusTypesAsync(db, logger);
+        await db.SaveChangesAsync();
         await BackfillBusClassificationAsync(db, logger);
         var clock = scope.ServiceProvider.GetRequiredService<IBusinessClock>();
         await SeedUserStationAssignmentsAsync(db, logger, clock);
         await SalesPartySeeder.SeedAsync(db);
 
-        if (!await db.Tariffs.AnyAsync())
-        {
-            db.Tariffs.Add(new Tariff
-            {
-                Id = Guid.NewGuid(),
-                RatePerKm = 2.50m,
-                Currency = "ETB",
-                IsActive = true,
-                EffectiveFrom = clock.UtcNow
-            });
-            logger.LogInformation("Seeded default tariff (2.50 ETB/km).");
-        }
+        await SeedTariffsAsync(db, logger, clock);
 
         if (!await db.AppSettings.AnyAsync(x => x.Key == AppSettingKeys.OnlinePaymentEnabled))
         {
@@ -201,6 +191,52 @@ public static class DatabaseSeeder
 
             existing.Name = name;
             existing.IsActive = true;
+        }
+    }
+
+    private static async Task SeedTariffsAsync(
+        TicketSystemDbContext db,
+        ILogger logger,
+        IBusinessClock clock)
+    {
+        var busLevels = await db.BusLevels
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Rank)
+            .ToListAsync();
+        var busTypes = await db.BusTypes
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Name)
+            .ToListAsync();
+
+        foreach (var busLevel in busLevels)
+        {
+            foreach (var busType in busTypes)
+            {
+                var current = await db.Tariffs.SingleOrDefaultAsync(
+                    x => x.IsActive
+                         && x.BusLevelId == busLevel.Id
+                         && x.BusTypeId == busType.Id);
+                if (current is not null)
+                {
+                    continue;
+                }
+
+                db.Tariffs.Add(new Tariff
+                {
+                    Id = Guid.NewGuid(),
+                    BusLevelId = busLevel.Id,
+                    BusTypeId = busType.Id,
+                    RatePerKm = 2.50m,
+                    Currency = "ETB",
+                    IsActive = true,
+                    EffectiveFrom = clock.UtcNow
+                });
+
+                logger.LogInformation(
+                    "Seeded tariff rule for {BusLevelCode}/{BusTypeCode} (2.50 ETB/km).",
+                    busLevel.Code,
+                    busType.Code);
+            }
         }
     }
 
