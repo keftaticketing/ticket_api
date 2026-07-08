@@ -62,7 +62,13 @@ public sealed class TicketService(
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
         var schedule = await db.Schedules
-            .Include(x => x.Route)
+            .Include(x => x.Route).ThenInclude(x => x.FromCity)
+            .Include(x => x.Route).ThenInclude(x => x.ToCity)
+            .Include(x => x.Route).ThenInclude(x => x.FromStation)
+            .Include(x => x.Route).ThenInclude(x => x.ToStation)
+            .Include(x => x.Association)
+            .Include(x => x.BusLevel)
+            .Include(x => x.BusType)
             .Include(x => x.Bus)
             .SingleOrDefaultAsync(x => x.Id == request.ScheduleId, cancellationToken);
 
@@ -93,8 +99,6 @@ public sealed class TicketService(
             return DomainErrors.SeatAlreadySold;
         }
 
-        var price = schedule.ResolvedTicketPrice;
-
         var ticket = new Ticket
         {
             Id = Guid.NewGuid(),
@@ -103,14 +107,12 @@ public sealed class TicketService(
             PassengerName = request.PassengerName.Trim(),
             PassengerPhone = request.PassengerPhone.Trim(),
             NationalId = string.IsNullOrWhiteSpace(request.NationalId) ? null : request.NationalId.Trim(),
-            Price = price,
-            DistanceKm = schedule.ResolvedDistanceKm,
-            RatePerKm = schedule.ResolvedRatePerKm,
             PaymentMethod = PaymentMethod.Cash,
             SoldByUserId = ticketerId,
             SoldByUserName = ticketerName,
             SoldAt = clock.UtcNow
         };
+        TicketCommercialSnapshot.ApplyFromSchedule(ticket, schedule);
 
         db.Tickets.Add(ticket);
 
@@ -118,7 +120,7 @@ public sealed class TicketService(
 
         try
         {
-            await distributionWriter.ApplyAsync(ticket, price, cancellationToken);
+            await distributionWriter.ApplyAsync(ticket, ticket.Price, cancellationToken);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("deductions exceed"))
         {
@@ -270,8 +272,6 @@ public sealed class TicketService(
     private async Task<ErrorOr<TicketResponse>> MapTicketAsync(Guid ticketId, CancellationToken cancellationToken)
     {
         var ticket = await db.Tickets.AsNoTracking()
-            .Include(x => x.Schedule).ThenInclude(x => x.Route).ThenInclude(x => x.FromCity)
-            .Include(x => x.Schedule).ThenInclude(x => x.Route).ThenInclude(x => x.ToCity)
             .Include(x => x.Schedule).ThenInclude(x => x.Bus)
             .SingleOrDefaultAsync(x => x.Id == ticketId, cancellationToken);
 
@@ -283,8 +283,21 @@ public sealed class TicketService(
         return new TicketResponse(
             ticket.Id,
             ticket.ScheduleId,
-            ticket.Schedule.Route.FromCity.Name,
-            ticket.Schedule.Route.ToCity.Name,
+            ticket.FromCityId,
+            ticket.FromCityName,
+            ticket.FromStationId,
+            ticket.FromStationName,
+            ticket.ToCityId,
+            ticket.ToCityName,
+            ticket.ToStationId,
+            ticket.ToStationName,
+            ticket.AssociationId,
+            ticket.AssociationName,
+            ticket.BusLevelId,
+            ticket.BusLevelName,
+            ticket.BusTypeId,
+            ticket.BusTypeName,
+            ticket.TariffId,
             clock.ToLocalDateTime(ticket.Schedule.DepartureAt),
             ticket.Schedule.SequenceNumber,
             ticket.Schedule.Bus.PlateNumber,

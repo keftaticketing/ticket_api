@@ -11,8 +11,14 @@ public sealed class TariffConfiguration : IEntityTypeConfiguration<Tariff>
         builder.HasKey(x => x.Id);
         builder.HasIndex(x => x.IsActive);
         builder.HasIndex(x => new { x.BusLevelId, x.BusTypeId, x.IsActive });
+        builder.HasIndex(x => new { x.RouteId, x.BusLevelId, x.BusTypeId, x.IsActive });
         builder.Property(x => x.RatePerKm).HasPrecision(10, 2);
         builder.Property(x => x.Currency).HasMaxLength(10);
+
+        builder.HasOne(x => x.Route)
+            .WithMany()
+            .HasForeignKey(x => x.RouteId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(x => x.BusLevel)
             .WithMany()

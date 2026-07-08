@@ -2,6 +2,7 @@ namespace TicketSystem.Api.Controllers;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using TicketSystem.Api.Extensions;
 using TicketSystem.Application.Abstractions.Authentication;
 using TicketSystem.Application.Features.Schedules;
@@ -68,6 +69,25 @@ public sealed class SchedulesController(
         return result.ToActionResult();
     }
 
+    [Authorize(Roles = "Admin")]
+    [HttpPost("{id:guid}/price-override")]
+    public async Task<ActionResult<ScheduleResponse>> SetPriceOverride(
+        Guid id,
+        [FromBody] SetSchedulePriceOverrideRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await scheduleService.SetPriceOverrideAsync(id, request, GetUserId(), cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpDelete("{id:guid}/price-override")]
+    public async Task<ActionResult<ScheduleResponse>> ClearPriceOverride(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await scheduleService.ClearPriceOverrideAsync(id, cancellationToken);
+        return result.ToActionResult();
+    }
+
     [Authorize(Roles = "Admin,Ticketer")]
     [HttpGet("{id:guid}/seats")]
     public async Task<ActionResult<SeatMapResponse>> GetSeats(Guid id, CancellationToken cancellationToken)
@@ -97,5 +117,12 @@ public sealed class SchedulesController(
 
         var result = await scheduleService.GetSeatStatusAsync(id, seatNumber, scope.Value, cancellationToken);
         return result.ToActionResult();
+    }
+
+    private Guid GetUserId()
+    {
+        var value = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+        return Guid.Parse(value!);
     }
 }

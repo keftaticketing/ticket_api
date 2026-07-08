@@ -19,6 +19,9 @@ public class Schedule : IAuditableEntity
     public decimal ResolvedDistanceKm { get; set; }
     public decimal ResolvedTicketPrice { get; set; }
     public PriceResolutionMode PriceResolutionMode { get; set; } = PriceResolutionMode.Rule;
+    public string? ManualPriceOverrideReason { get; set; }
+    public Guid? ManualPriceOverrideByUserId { get; set; }
+    public DateTime? ManualPriceOverrideAt { get; set; }
     public ScheduleStatus Status { get; set; } = ScheduleStatus.Scheduled;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

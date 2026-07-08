@@ -88,6 +88,18 @@ public static class DomainErrors
     public static Error InvalidRatePerKm =>
         Error.Validation("Tariff.InvalidRate", "Rate per km must be greater than zero.");
 
+    public static Error ManualPriceOverrideRequiresReason =>
+        Error.Validation("Schedule.ManualPriceOverrideRequiresReason", "A reason is required for manual price overrides.");
+
+    public static Error InvalidManualTicketPrice =>
+        Error.Validation("Schedule.InvalidManualTicketPrice", "Ticket price must be greater than zero.");
+
+    public static Error ManualPriceOverrideNotAllowedWhenTicketsSold =>
+        Error.Conflict("Schedule.ManualPriceOverrideNotAllowedWhenTicketsSold", "Price override is not allowed after tickets have been sold.");
+
+    public static Error SchedulePriceOverrideNotApplied =>
+        Error.Validation("Schedule.PriceOverrideNotApplied", "This schedule does not have a manual price override.");
+
     public static Error ScheduleNotFound =>
         Error.NotFound("Schedule.NotFound", "Schedule not found.");
 

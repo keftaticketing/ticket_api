@@ -21,7 +21,8 @@ public sealed class TariffService(IApplicationDbContext db, IBusinessClock clock
     {
         var tariffs = await QueryTariffs()
             .Where(x => x.IsActive)
-            .OrderBy(x => x.BusLevel.Rank)
+            .OrderBy(x => x.RouteId.HasValue ? 1 : 0)
+            .ThenBy(x => x.BusLevel.Rank)
             .ThenBy(x => x.BusType.Name)
             .ThenByDescending(x => x.EffectiveFrom)
             .ToListAsync(cancellationToken);
@@ -52,11 +53,25 @@ public sealed class TariffService(IApplicationDbContext db, IBusinessClock clock
             return DomainErrors.BusTypeNotFound;
         }
 
+        Route? route = null;
+        if (request.RouteId is Guid routeId)
+        {
+            route = await db.Routes.AsNoTracking()
+                .Include(x => x.FromCity)
+                .Include(x => x.ToCity)
+                .SingleOrDefaultAsync(x => x.Id == routeId && x.IsActive, cancellationToken);
+            if (route is null)
+            {
+                return DomainErrors.RouteNotFound;
+            }
+        }
+
         var now = clock.UtcNow;
         var current = await db.Tariffs.SingleOrDefaultAsync(
             x => x.IsActive
                  && x.BusLevelId == request.BusLevelId
-                 && x.BusTypeId == request.BusTypeId,
+                 && x.BusTypeId == request.BusTypeId
+                 && x.RouteId == request.RouteId,
             cancellationToken);
         if (current is not null)
         {
@@ -67,6 +82,7 @@ public sealed class TariffService(IApplicationDbContext db, IBusinessClock clock
         var tariff = new Tariff
         {
             Id = Guid.NewGuid(),
+            RouteId = request.RouteId,
             BusLevelId = busLevel.Id,
             BusTypeId = busType.Id,
             RatePerKm = request.RatePerKm,
@@ -79,6 +95,12 @@ public sealed class TariffService(IApplicationDbContext db, IBusinessClock clock
 
         db.Tariffs.Add(tariff);
         await db.SaveChangesAsync(cancellationToken);
+
+        if (route is not null)
+        {
+            tariff.Route = route;
+        }
+
         return Map(tariff);
     }
 
@@ -87,17 +109,26 @@ public sealed class TariffService(IApplicationDbContext db, IBusinessClock clock
         var tariffs = await QueryTariffs()
             .OrderByDescending(x => x.EffectiveFrom)
             .ToListAsync(cancellationToken);
-        return tariffs.Select(x => Map(x)).ToList();
+        return tariffs.Select(Map).ToList();
     }
 
     private IQueryable<Tariff> QueryTariffs() =>
         db.Tariffs.AsNoTracking()
             .Include(x => x.BusLevel)
-            .Include(x => x.BusType);
+            .Include(x => x.BusType)
+            .Include(x => x.Route).ThenInclude(x => x!.FromCity)
+            .Include(x => x.Route).ThenInclude(x => x!.ToCity);
 
     private TariffResponse Map(Tariff tariff) =>
         new(
             tariff.Id,
+            tariff.RouteId,
+            tariff.Route is null
+                ? null
+                : new TariffRouteResponse(
+                    tariff.Route.Id,
+                    tariff.Route.FromCity.Name,
+                    tariff.Route.ToCity.Name),
             new TariffBusLevelResponse(
                 tariff.BusLevel.Id,
                 tariff.BusLevel.Code,
