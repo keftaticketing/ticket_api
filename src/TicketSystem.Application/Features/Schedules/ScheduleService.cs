@@ -7,7 +7,6 @@ using TicketSystem.Application.Abstractions.Realtime;
 using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Errors;
 using TicketSystem.Application.Features.Auth;
-using TicketSystem.Application.Features.Tariffs;
 using TicketSystem.Contracts.Schedules;
 using TicketSystem.Domain.Entities;
 using TicketSystem.Domain.Enums;
@@ -97,6 +96,12 @@ public sealed class ScheduleService(
             SequenceNumber = request.SequenceNumber
         };
         ScheduleOptionOrdering.ApplyClassificationSnapshot(schedule, bus, departureDate);
+
+        var pricingResult = await SchedulePricingSnapshot.ApplyFromTariffAsync(schedule, route, db, cancellationToken);
+        if (pricingResult.IsError)
+        {
+            return pricingResult.Errors;
+        }
 
         db.Schedules.Add(schedule);
         await db.SaveChangesAsync(cancellationToken);
@@ -261,24 +266,12 @@ public sealed class ScheduleService(
             return DomainErrors.ScheduleCancelled;
         }
 
-        var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
-            db,
-            schedule.Bus.BusLevelId,
-            schedule.Bus.BusTypeId,
-            cancellationToken);
-        if (tariffResult.IsError)
-        {
-            return tariffResult.Errors;
-        }
-
-        var tariff = tariffResult.Value;
         var soldSeats = await db.Tickets.AsNoTracking()
             .Where(x => x.ScheduleId == scheduleId)
             .Select(x => x.SeatNumber)
             .ToListAsync(cancellationToken);
 
         var summary = SeatMapBuilder.Build(schedule.Bus.SeatCount, soldSeats);
-        var ticketPrice = schedule.Route.DistanceKm * tariff.RatePerKm;
 
         return new SeatMapResponse(
             scheduleId,
@@ -286,7 +279,7 @@ public sealed class ScheduleService(
             summary.SoldSeatCount,
             summary.AvailableSeatCount,
             summary.IsFullySold,
-            ticketPrice,
+            schedule.ResolvedTicketPrice,
             summary.Seats);
     }
 
@@ -364,26 +357,14 @@ public sealed class ScheduleService(
             return DomainErrors.ScheduleNotFound;
         }
 
-        var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
-            db,
-            schedule.Bus.BusLevelId,
-            schedule.Bus.BusTypeId,
-            cancellationToken);
-        if (tariffResult.IsError)
-        {
-            return tariffResult.Errors;
-        }
-
-        var tariff = tariffResult.Value;
         var soldCount = await db.Tickets.CountAsync(x => x.ScheduleId == scheduleId, cancellationToken);
-        var ticketPrice = schedule.Route.DistanceKm * tariff.RatePerKm;
 
         return new ScheduleResponse(
             schedule.Id,
             schedule.RouteId,
             schedule.Route.FromCity.Name,
             schedule.Route.ToCity.Name,
-            schedule.Route.DistanceKm,
+            schedule.ResolvedDistanceKm,
             schedule.BusId,
             schedule.Bus.PlateNumber,
             schedule.Bus.SeatCount,
@@ -392,7 +373,7 @@ public sealed class ScheduleService(
             schedule.Status.ToString(),
             soldCount,
             schedule.Bus.SeatCount - soldCount,
-            tariff.RatePerKm,
-            ticketPrice);
+            schedule.ResolvedRatePerKm,
+            schedule.ResolvedTicketPrice);
     }
 }

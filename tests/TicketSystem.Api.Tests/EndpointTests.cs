@@ -675,6 +675,31 @@ public sealed class ScheduleEndpointsTests(TicketSystemWebApplicationFactory fac
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
+
+    [Fact]
+    public async Task CreateSchedule_KeepsResolvedPriceAfterTariffChanges()
+    {
+        var (routeId, busId) = await SeedRouteAndBusAsync("AA-20030", to: "Jimma");
+        var client = AdminClient();
+        var busLevelId = await GetBusLevelIdAsync("L1");
+        var busTypeId = await GetBusTypeIdAsync("regular");
+        var departure = AddisTestTimes.TodayAt(14);
+
+        var created = await client.PostAsJsonAsync("/api/schedules",
+            new CreateScheduleRequest(routeId, busId, departure, 1));
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var schedule = await created.Content.ReadFromJsonAsync<ScheduleResponse>();
+        schedule!.TicketPrice.Should().Be(346 * 2.50m);
+
+        await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(busLevelId, busTypeId, 9.99m));
+
+        var response = await client.GetAsync(
+            $"/api/schedules?routeId={routeId}&date={AddisTestTimes.DateOf(departure):yyyy-MM-dd}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<List<ScheduleResponse>>();
+        body!.Single().TicketPrice.Should().Be(346 * 2.50m);
+        body.Single().RatePerKm.Should().Be(2.50m);
+    }
 }
 
 [Collection("Api")]
@@ -819,6 +844,29 @@ public sealed class TicketEndpointsTests(TicketSystemWebApplicationFactory facto
         body.ScheduleSoldSeatCount.Should().Be(1);
         body.ScheduleAvailableSeatCount.Should().Be(19);
         body.ScheduleIsFullySold.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SellCashTicket_UsesScheduleSnapshotPriceAfterTariffChanges()
+    {
+        var (routeId, busId) = await SeedRouteAndBusAsync("AA-30010", to: "Jimma", seats: 20);
+        var client = AdminClient();
+        var busLevelId = await GetBusLevelIdAsync("L1");
+        var busTypeId = await GetBusTypeIdAsync("regular");
+        var departure = AddisTestTimes.TodayAt(12);
+        var created = await client.PostAsJsonAsync("/api/schedules",
+            new CreateScheduleRequest(routeId, busId, departure, 1));
+        var schedule = await created.Content.ReadFromJsonAsync<ScheduleResponse>();
+
+        await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(busLevelId, busTypeId, 9.99m));
+
+        var response = await TicketerClient().PostAsJsonAsync("/api/tickets/cash",
+            new SellCashTicketRequest(schedule!.Id, 4, "Snapshot Buyer", "0911223366", null));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var body = await response.Content.ReadFromJsonAsync<SellCashTicketResponse>();
+        body!.Ticket.Price.Should().Be(346 * 2.50m);
+        body.Ticket.RatePerKm.Should().Be(2.50m);
     }
 
     [Fact]

@@ -6,7 +6,6 @@ using TicketSystem.Application.Abstractions.Persistence;
 using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Features.Auth;
 using TicketSystem.Application.Features.Schedules;
-using TicketSystem.Application.Features.Tariffs;
 using TicketSystem.Application.Errors;
 using TicketSystem.Contracts.Routes;
 using TicketSystem.Contracts.Schedules;
@@ -314,16 +313,6 @@ public sealed class RouteService(IApplicationDbContext db, IBusinessClock clock)
             soldSet ??= [];
 
             var summary = SeatMapBuilder.Build(schedule.Bus.SeatCount, soldSet);
-            var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
-                db,
-                schedule.Bus.BusLevelId,
-                schedule.Bus.BusTypeId,
-                cancellationToken);
-            if (tariffResult.IsError)
-            {
-                return tariffResult.Errors;
-            }
-            var ticketPrice = route.DistanceKm * tariffResult.Value.RatePerKm;
 
             seatMaps.Add(new RouteScheduleSeatMapResponse(
                 schedule.Id,
@@ -336,7 +325,7 @@ public sealed class RouteService(IApplicationDbContext db, IBusinessClock clock)
                 summary.SoldSeatCount,
                 summary.AvailableSeatCount,
                 summary.IsFullySold,
-                ticketPrice,
+                schedule.ResolvedTicketPrice,
                 summary.Seats));
         }
 

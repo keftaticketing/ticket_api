@@ -10,7 +10,6 @@ using TicketSystem.Application.Abstractions.Time;
 using TicketSystem.Application.Errors;
 using TicketSystem.Application.Features.SalesParties;
 using TicketSystem.Application.Features.Schedules;
-using TicketSystem.Application.Features.Tariffs;
 using TicketSystem.Contracts.SalesParties;
 using TicketSystem.Contracts.Tickets;
 using TicketSystem.Domain.Entities;
@@ -94,18 +93,7 @@ public sealed class TicketService(
             return DomainErrors.SeatAlreadySold;
         }
 
-        var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
-            db,
-            schedule.Bus.BusLevelId,
-            schedule.Bus.BusTypeId,
-            cancellationToken);
-        if (tariffResult.IsError)
-        {
-            return tariffResult.Errors;
-        }
-
-        var tariff = tariffResult.Value;
-        var price = schedule.Route.DistanceKm * tariff.RatePerKm;
+        var price = schedule.ResolvedTicketPrice;
 
         var ticket = new Ticket
         {
@@ -116,8 +104,8 @@ public sealed class TicketService(
             PassengerPhone = request.PassengerPhone.Trim(),
             NationalId = string.IsNullOrWhiteSpace(request.NationalId) ? null : request.NationalId.Trim(),
             Price = price,
-            DistanceKm = schedule.Route.DistanceKm,
-            RatePerKm = tariff.RatePerKm,
+            DistanceKm = schedule.ResolvedDistanceKm,
+            RatePerKm = schedule.ResolvedRatePerKm,
             PaymentMethod = PaymentMethod.Cash,
             SoldByUserId = ticketerId,
             SoldByUserName = ticketerName,

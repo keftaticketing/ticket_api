@@ -26,5 +26,7 @@ public sealed class ScheduleConfiguration : IEntityTypeConfiguration<Schedule>
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.BusType).WithMany().HasForeignKey(x => x.BusTypeId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Tariff).WithMany().HasForeignKey(x => x.TariffId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
