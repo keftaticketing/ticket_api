@@ -434,7 +434,32 @@ public sealed class TariffEndpointsTests(TicketSystemWebApplicationFactory facto
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<List<TariffResponse>>();
         body.Should().NotBeEmpty();
-        body!.Should().OnlyContain(x => x.RatePerKm == 2.50m && x.Currency == "ETB" && x.IsActive);
+        body!.Where(x => x.RouteId is null).Should().OnlyContain(x => x.RatePerKm == 2.50m && x.Currency == "ETB" && x.IsActive);
+    }
+
+    [Fact]
+    public async Task SetRouteTariffOverride_UsedWhenCreatingSchedule()
+    {
+        var (routeId, busId) = await SeedRouteAndBusAsync("AA-60001", to: "Jimma");
+        var client = AdminClient();
+        var busLevelId = await GetBusLevelIdAsync("L1");
+        var busTypeId = await GetBusTypeIdAsync("regular");
+        await client.PutAsJsonAsync("/api/tariffs",
+            new SetTariffRequest(busLevelId, busTypeId, 4.50m, routeId));
+
+        var activeTariffs = await (await client.GetAsync("/api/tariffs/active")).Content
+            .ReadFromJsonAsync<List<TariffResponse>>();
+        activeTariffs!.Should().Contain(x => x.RouteId == routeId && x.RatePerKm == 4.50m);
+
+        var departure = AddisTestTimes.TodayAt(6);
+        var created = await client.PostAsJsonAsync("/api/schedules",
+            new CreateScheduleRequest(routeId, busId, departure, 1));
+
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var schedule = await created.Content.ReadFromJsonAsync<ScheduleResponse>();
+        schedule!.TicketPrice.Should().Be(346 * 4.50m);
+        schedule.RatePerKm.Should().Be(4.50m);
+        schedule.PriceResolutionMode.Should().Be("Rule");
     }
 
     [Fact]
@@ -700,6 +725,51 @@ public sealed class ScheduleEndpointsTests(TicketSystemWebApplicationFactory fac
         body!.Single().TicketPrice.Should().Be(346 * 2.50m);
         body.Single().RatePerKm.Should().Be(2.50m);
     }
+
+    [Fact]
+    public async Task SetSchedulePriceOverride_UpdatesResolvedPrice()
+    {
+        var (routeId, busId) = await SeedRouteAndBusAsync("AA-20031", to: "Jimma");
+        var client = AdminClient();
+        var departure = AddisTestTimes.TodayAt(15);
+        var created = await client.PostAsJsonAsync("/api/schedules",
+            new CreateScheduleRequest(routeId, busId, departure, 1));
+        var schedule = await created.Content.ReadFromJsonAsync<ScheduleResponse>();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/schedules/{schedule!.Id}/price-override",
+            new SetSchedulePriceOverrideRequest(1200m, "Emergency road adjustment"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await response.Content.ReadFromJsonAsync<ScheduleResponse>();
+        updated!.TicketPrice.Should().Be(1200m);
+        updated.PriceResolutionMode.Should().Be("ManualOverride");
+    }
+
+    [Fact]
+    public async Task ClearSchedulePriceOverride_RevertsToTariffRulePrice()
+    {
+        var (routeId, busId) = await SeedRouteAndBusAsync("AA-20032", to: "Jimma");
+        var client = AdminClient();
+        var busLevelId = await GetBusLevelIdAsync("L1");
+        var busTypeId = await GetBusTypeIdAsync("regular");
+        var departure = AddisTestTimes.TodayAt(16);
+        var created = await client.PostAsJsonAsync("/api/schedules",
+            new CreateScheduleRequest(routeId, busId, departure, 1));
+        var schedule = await created.Content.ReadFromJsonAsync<ScheduleResponse>();
+
+        await client.PostAsJsonAsync(
+            $"/api/schedules/{schedule!.Id}/price-override",
+            new SetSchedulePriceOverrideRequest(1200m, "Temporary adjustment"));
+        await client.PutAsJsonAsync("/api/tariffs", new SetTariffRequest(busLevelId, busTypeId, 3.25m));
+
+        var response = await client.DeleteAsync($"/api/schedules/{schedule.Id}/price-override");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await response.Content.ReadFromJsonAsync<ScheduleResponse>();
+        updated!.TicketPrice.Should().Be(346 * 3.25m);
+        updated.PriceResolutionMode.Should().Be("Rule");
+    }
 }
 
 [Collection("Api")]
@@ -867,6 +937,47 @@ public sealed class TicketEndpointsTests(TicketSystemWebApplicationFactory facto
         var body = await response.Content.ReadFromJsonAsync<SellCashTicketResponse>();
         body!.Ticket.Price.Should().Be(346 * 2.50m);
         body.Ticket.RatePerKm.Should().Be(2.50m);
+    }
+
+    [Fact]
+    public async Task SellCashTicket_PersistsCommercialSnapshot()
+    {
+        var scheduleId = await SeedScheduleAsync("AA-30011", 20);
+        var client = TicketerClient();
+        var response = await client.PostAsJsonAsync("/api/tickets/cash",
+            new SellCashTicketRequest(scheduleId, 7, "Snapshot Buyer", "0911223377", null));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var body = await response.Content.ReadFromJsonAsync<SellCashTicketResponse>();
+        body!.Ticket.FromCity.Should().Be("Addis Ababa");
+        body.Ticket.ToCity.Should().Be("Jimma");
+        body.Ticket.FromStationName.Should().NotBeNullOrWhiteSpace();
+        body.Ticket.ToStationName.Should().NotBeNullOrWhiteSpace();
+        body.Ticket.AssociationName.Should().NotBeNullOrWhiteSpace();
+        body.Ticket.BusLevelName.Should().Be("Level 1");
+        body.Ticket.BusTypeName.Should().Be("Regular");
+        body.Ticket.TariffId.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task SellCashTicket_UsesManualOverridePrice()
+    {
+        var (routeId, busId) = await SeedRouteAndBusAsync("AA-30012", to: "Jimma", seats: 20);
+        var admin = AdminClient();
+        var departure = AddisTestTimes.TodayAt(12);
+        var created = await admin.PostAsJsonAsync("/api/schedules",
+            new CreateScheduleRequest(routeId, busId, departure, 1));
+        var schedule = await created.Content.ReadFromJsonAsync<ScheduleResponse>();
+        await admin.PostAsJsonAsync(
+            $"/api/schedules/{schedule!.Id}/price-override",
+            new SetSchedulePriceOverrideRequest(1500m, "Promotional fare"));
+
+        var response = await TicketerClient().PostAsJsonAsync("/api/tickets/cash",
+            new SellCashTicketRequest(schedule.Id, 8, "Override Buyer", "0911223388", null));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var body = await response.Content.ReadFromJsonAsync<SellCashTicketResponse>();
+        body!.Ticket.Price.Should().Be(1500m);
     }
 
     [Fact]
