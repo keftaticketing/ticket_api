@@ -14,8 +14,9 @@ public static class SchedulePricingSnapshot
         IApplicationDbContext db,
         CancellationToken cancellationToken = default)
     {
-        var tariffResult = await TariffResolver.ResolveActiveForBusAsync(
+        var tariffResult = await TariffResolver.ResolveActiveForRouteAsync(
             db,
+            route.Id,
             schedule.BusLevelId,
             schedule.BusTypeId,
             cancellationToken);

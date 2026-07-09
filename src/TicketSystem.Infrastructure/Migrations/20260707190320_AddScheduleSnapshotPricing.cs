@@ -43,22 +43,29 @@ namespace TicketSystem.Infrastructure.Migrations
 
             migrationBuilder.Sql("""
                 UPDATE "Schedules" s
-                SET "TariffId" = matched."Id",
-                    "ResolvedRatePerKm" = matched."RatePerKm",
-                    "ResolvedDistanceKm" = r."DistanceKm",
-                    "ResolvedTicketPrice" = r."DistanceKm" * matched."RatePerKm",
+                SET "TariffId" = x."TariffId",
+                    "ResolvedRatePerKm" = x."RatePerKm",
+                    "ResolvedDistanceKm" = x."DistanceKm",
+                    "ResolvedTicketPrice" = x."DistanceKm" * x."RatePerKm",
                     "PriceResolutionMode" = 0
-                FROM "Routes" r
-                JOIN LATERAL (
-                    SELECT t."Id", t."RatePerKm"
-                    FROM "Tariffs" t
-                    WHERE t."IsActive" = true
-                      AND t."BusLevelId" = s."BusLevelId"
-                      AND t."BusTypeId" = s."BusTypeId"
-                    ORDER BY t."EffectiveFrom" DESC
-                    LIMIT 1
-                ) matched ON true
-                WHERE s."RouteId" = r."Id";
+                FROM (
+                    SELECT s2."Id" AS "ScheduleId",
+                           matched."Id" AS "TariffId",
+                           matched."RatePerKm" AS "RatePerKm",
+                           r."DistanceKm" AS "DistanceKm"
+                    FROM "Schedules" s2
+                    JOIN "Routes" r ON s2."RouteId" = r."Id"
+                    JOIN LATERAL (
+                        SELECT t."Id", t."RatePerKm"
+                        FROM "Tariffs" t
+                        WHERE t."IsActive" = true
+                          AND t."BusLevelId" = s2."BusLevelId"
+                          AND t."BusTypeId" = s2."BusTypeId"
+                        ORDER BY t."EffectiveFrom" DESC
+                        LIMIT 1
+                    ) matched ON true
+                ) x
+                WHERE s."Id" = x."ScheduleId";
                 """);
 
             migrationBuilder.AlterColumn<int>(

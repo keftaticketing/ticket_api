@@ -11,6 +11,10 @@ public sealed record UpdateScheduleRequest(
     int SequenceNumber,
     string Status);
 
+public sealed record SetSchedulePriceOverrideRequest(
+    decimal TicketPrice,
+    string Reason);
+
 public sealed record ScheduleResponse(
     Guid Id,
     Guid RouteId,
@@ -26,7 +30,8 @@ public sealed record ScheduleResponse(
     int SoldSeatCount,
     int AvailableSeatCount,
     decimal RatePerKm,
-    decimal TicketPrice);
+    decimal TicketPrice,
+    string PriceResolutionMode);
 
 public sealed record SeatStatusResponse(
     int SeatNumber,

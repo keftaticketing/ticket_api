@@ -3,7 +3,13 @@ namespace TicketSystem.Contracts.Tariffs;
 public sealed record SetTariffRequest(
     Guid BusLevelId,
     Guid BusTypeId,
-    decimal RatePerKm);
+    decimal RatePerKm,
+    Guid? RouteId = null);
+
+public sealed record TariffRouteResponse(
+    Guid Id,
+    string FromCity,
+    string ToCity);
 
 public sealed record TariffBusLevelResponse(
     Guid Id,
@@ -18,6 +24,8 @@ public sealed record TariffBusTypeResponse(
 
 public sealed record TariffResponse(
     Guid Id,
+    Guid? RouteId,
+    TariffRouteResponse? Route,
     TariffBusLevelResponse BusLevel,
     TariffBusTypeResponse BusType,
     decimal RatePerKm,

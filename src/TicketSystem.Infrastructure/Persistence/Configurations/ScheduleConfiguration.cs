@@ -18,6 +18,7 @@ public sealed class ScheduleConfiguration : IEntityTypeConfiguration<Schedule>
             x.BusTypeId,
             x.SequenceNumber
         });
+        builder.Property(x => x.ManualPriceOverrideReason).HasMaxLength(500);
         builder.HasOne(x => x.Route).WithMany(x => x.Schedules).HasForeignKey(x => x.RouteId);
         builder.HasOne(x => x.Bus).WithMany(x => x.Schedules).HasForeignKey(x => x.BusId);
         builder.HasOne(x => x.Association).WithMany().HasForeignKey(x => x.AssociationId)

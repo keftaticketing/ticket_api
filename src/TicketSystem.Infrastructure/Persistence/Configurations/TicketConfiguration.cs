@@ -14,6 +14,13 @@ public sealed class TicketConfiguration : IEntityTypeConfiguration<Ticket>
         builder.Property(x => x.PassengerPhone).HasMaxLength(30);
         builder.Property(x => x.NationalId).HasMaxLength(50);
         builder.Property(x => x.SoldByUserName).HasMaxLength(200);
+        builder.Property(x => x.FromCityName).HasMaxLength(200);
+        builder.Property(x => x.FromStationName).HasMaxLength(200);
+        builder.Property(x => x.ToCityName).HasMaxLength(200);
+        builder.Property(x => x.ToStationName).HasMaxLength(200);
+        builder.Property(x => x.AssociationName).HasMaxLength(200);
+        builder.Property(x => x.BusLevelName).HasMaxLength(100);
+        builder.Property(x => x.BusTypeName).HasMaxLength(100);
         builder.Property(x => x.Price).HasPrecision(12, 2);
         builder.Property(x => x.DistanceKm).HasPrecision(10, 2);
         builder.Property(x => x.RatePerKm).HasPrecision(10, 2);

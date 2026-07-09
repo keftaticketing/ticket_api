@@ -25,6 +25,12 @@ public interface IScheduleService
         Guid? scopedFromStationId = null,
         CancellationToken cancellationToken = default);
     Task<ErrorOr<ScheduleResponse>> UpdateAsync(Guid id, UpdateScheduleRequest request, CancellationToken cancellationToken = default);
+    Task<ErrorOr<ScheduleResponse>> SetPriceOverrideAsync(
+        Guid id,
+        SetSchedulePriceOverrideRequest request,
+        Guid adminUserId,
+        CancellationToken cancellationToken = default);
+    Task<ErrorOr<ScheduleResponse>> ClearPriceOverrideAsync(Guid id, CancellationToken cancellationToken = default);
     Task<ErrorOr<SeatMapResponse>> GetSeatMapAsync(
         Guid scheduleId,
         Guid? scopedFromStationId = null,
@@ -238,6 +244,84 @@ public sealed class ScheduleService(
         return await MapScheduleAsync(schedule.Id, cancellationToken);
     }
 
+    public async Task<ErrorOr<ScheduleResponse>> SetPriceOverrideAsync(
+        Guid id,
+        SetSchedulePriceOverrideRequest request,
+        Guid adminUserId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return DomainErrors.ManualPriceOverrideRequiresReason;
+        }
+
+        if (request.TicketPrice <= 0)
+        {
+            return DomainErrors.InvalidManualTicketPrice;
+        }
+
+        var schedule = await db.Schedules
+            .Include(x => x.Route)
+            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (schedule is null)
+        {
+            return DomainErrors.ScheduleNotFound;
+        }
+
+        if (await db.Tickets.AnyAsync(x => x.ScheduleId == id, cancellationToken))
+        {
+            return DomainErrors.ManualPriceOverrideNotAllowedWhenTicketsSold;
+        }
+
+        schedule.ResolvedTicketPrice = request.TicketPrice;
+        schedule.ResolvedRatePerKm = schedule.ResolvedDistanceKm == 0
+            ? 0
+            : decimal.Round(request.TicketPrice / schedule.ResolvedDistanceKm, 2, MidpointRounding.AwayFromZero);
+        schedule.PriceResolutionMode = PriceResolutionMode.ManualOverride;
+        schedule.ManualPriceOverrideReason = request.Reason.Trim();
+        schedule.ManualPriceOverrideByUserId = adminUserId;
+        schedule.ManualPriceOverrideAt = clock.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return await MapScheduleAsync(schedule.Id, cancellationToken);
+    }
+
+    public async Task<ErrorOr<ScheduleResponse>> ClearPriceOverrideAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var schedule = await db.Schedules
+            .Include(x => x.Route)
+            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (schedule is null)
+        {
+            return DomainErrors.ScheduleNotFound;
+        }
+
+        if (schedule.PriceResolutionMode != PriceResolutionMode.ManualOverride)
+        {
+            return DomainErrors.SchedulePriceOverrideNotApplied;
+        }
+
+        if (await db.Tickets.AnyAsync(x => x.ScheduleId == id, cancellationToken))
+        {
+            return DomainErrors.ManualPriceOverrideNotAllowedWhenTicketsSold;
+        }
+
+        var pricingResult = await SchedulePricingSnapshot.ApplyFromTariffAsync(schedule, schedule.Route, db, cancellationToken);
+        if (pricingResult.IsError)
+        {
+            return pricingResult.Errors;
+        }
+
+        schedule.ManualPriceOverrideReason = null;
+        schedule.ManualPriceOverrideByUserId = null;
+        schedule.ManualPriceOverrideAt = null;
+
+        await db.SaveChangesAsync(cancellationToken);
+        return await MapScheduleAsync(schedule.Id, cancellationToken);
+    }
+
     public async Task<ErrorOr<SeatMapResponse>> GetSeatMapAsync(
         Guid scheduleId,
         Guid? scopedFromStationId = null,
@@ -374,6 +458,7 @@ public sealed class ScheduleService(
             soldCount,
             schedule.Bus.SeatCount - soldCount,
             schedule.ResolvedRatePerKm,
-            schedule.ResolvedTicketPrice);
+            schedule.ResolvedTicketPrice,
+            schedule.PriceResolutionMode.ToString());
     }
 }
